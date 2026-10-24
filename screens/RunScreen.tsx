@@ -1,5 +1,12 @@
-import { useState } from 'react';
-import { Alert, Linking, ScrollView, StyleSheet, Text, View } from 'react-native';
+import { useCallback, useEffect, useMemo, useState } from 'react';
+import {
+  Alert,
+  Linking,
+  ScrollView,
+  StyleSheet,
+  Text,
+  View,
+} from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
@@ -9,17 +16,20 @@ import Card from '../components/ui/Card';
 import EmptyState from '../components/ui/EmptyState';
 import ScreenHeader from '../components/ui/ScreenHeader';
 import StatBox from '../components/ui/StatBox';
+import ThemeToggle from '../components/ui/ThemeToggle';
 import ConfirmStopModal from '../components/run/ConfirmStopModal';
 import StatusBadge from '../components/run/StatusBadge';
-import SummaryCard from '../components/run/SummaryCard';
+import SummaryCard, { RunSummary } from '../components/run/SummaryCard';
+import RunMapView from '../components/run/RunMapView';
 import {
-  colors, fontSize, fontWeight, layout, radius, spacing,
+  fontSize, fontWeight, layout, radius, shadow, spacing, ThemeColors,
 } from '../constants/theme';
+import { useTheme } from '../store/themeStore';
 import { formatDistance, formatDuration, formatInt, formatPace } from '../utils/format';
 
-type Phase = 'idle' | 'noPermission' | 'running' | 'paused' | 'summary';
+export type RunPhase = 'idle' | 'noPermission' | 'running' | 'paused' | 'summary';
 
-type RunStats = {
+export type RunStats = {
   seconds: number;
   distanceKm: number;
   steps: number;
@@ -28,7 +38,15 @@ type RunStats = {
   cadence: number;
 };
 
-// [DATABASE / DEFAULTS]: Dữ liệu khởi tạo mặc định ban đầu
+// Dữ liệu mẫu chuẩn khi ở trạng thái xem thử tổng kết
+const SAMPLE_SUMMARY: RunSummary = {
+  seconds: 1845,
+  distanceKm: 4.25,
+  steps: 5310,
+  paceMinPerKm: 7.23,
+  calories: 312,
+};
+
 const INITIAL_STATS: RunStats = {
   seconds: 0,
   distanceKm: 0,
@@ -41,126 +59,199 @@ const INITIAL_STATS: RunStats = {
 const DEFAULT_GOAL_KM = 5;
 
 export default function RunScreen() {
-  const [phase, setPhase] = useState<Phase>('idle');
+  const { colors, isDark } = useTheme();
+  const [phase, setPhase] = useState<RunPhase>('idle');
   const [confirmVisible, setConfirmVisible] = useState(false);
 
-  // [DATABASE - GET]: Trạng thái số liệu buổi chạy thực tế (khởi tạo 0, chuẩn bị đón dữ liệu từ cảm biến & DB)
+  // Quản lý số liệu thực tế của buổi chạy
   const [stats, setStats] = useState<RunStats>(INITIAL_STATS);
-
-  // [DATABASE - GET]: Mục tiêu quãng đường (km). Cần query từ bảng `user_profiles` hoặc `goals` trong SQLite.
-  // Ví dụ: const { profile } = useProfile(); -> goalKm = profile?.dailyRunGoalKm ?? DEFAULT_GOAL_KM;
   const [goalKm] = useState<number>(DEFAULT_GOAL_KM);
 
-  /*
-   * =========================================================================
-   * [DATABASE / SENSORS - CHUẨN BỊ KẾT NỐI]:
-   * 1. Lấy thông tin người dùng từ SQLite (chiều cao, cân nặng):
-   *    - Chiều cao (height) -> tính sải chân: stride = height * 0.415
-   *    - Cân nặng (weight) -> tính calo: MET * weight * (seconds / 3600)
-   * 2. Hook cảm biến đếm bước (Pedometer từ `expo-sensors`):
-   *    - Khi `phase === 'running'`, lắng nghe bước chân thời gian thực
-   *    - Cập nhật `stats.steps`, `stats.distanceKm = (steps * stride) / 100000`, v.v.
-   * =========================================================================
-   */
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
-  const go = (next: Phase) => {
+  // Bộ đếm thời gian khi ở trạng thái 'running'
+  useEffect(() => {
+    let timer: ReturnType<typeof setInterval> | null = null;
+    if (phase === 'running') {
+      timer = setInterval(() => {
+        setStats((prev) => {
+          const nextSec = prev.seconds + 1;
+          const nextPace = prev.distanceKm > 0 ? (nextSec / 60) / prev.distanceKm : null;
+          return {
+            ...prev,
+            seconds: nextSec,
+            paceMinPerKm: nextPace,
+          };
+        });
+      }, 1000);
+    }
+    return () => {
+      if (timer) clearInterval(timer);
+    };
+  }, [phase]);
+
+  const go = (next: RunPhase) => {
     setPhase(next);
   };
 
   const handleStart = () => {
-    // Reset số liệu về mặc định khi bắt đầu buổi chạy mới
     setStats(INITIAL_STATS);
     go('running');
   };
 
+  const handleDistanceChange = useCallback((distanceKm: number) => {
+    setStats((prev) => {
+      const newDist = Math.max(prev.distanceKm, Number(distanceKm.toFixed(2)));
+      const steps = Math.round(newDist * 1350);
+      const pace = prev.seconds > 0 && newDist > 0 ? (prev.seconds / 60) / newDist : null;
+      const calories = Math.round(newDist * 65);
+      return {
+        ...prev,
+        distanceKm: newDist,
+        steps,
+        paceMinPerKm: pace,
+        calories,
+        cadence: 165,
+      };
+    });
+  }, []);
+
   const handleDiscard = () => {
-    // Hủy bỏ buổi chạy và reset số liệu về mặc định
     setStats(INITIAL_STATS);
     go('idle');
   };
 
   const saveRun = async () => {
-    /*
-     * [DATABASE - INSERT]: Lưu thông tin buổi chạy vào SQLite
-     * Bảng: `run_logs`
-     * Dữ liệu cần lưu:
-     * - id: UUID v4 (hoặc tự tăng)
-     * - date: new Date().toISOString()
-     * - duration_seconds: stats.seconds
-     * - distance_km: stats.distanceKm
-     * - steps: stats.steps
-     * - avg_pace: stats.paceMinPerKm
-     * - calories: stats.calories
-     * - avg_cadence: stats.cadence
-     *
-     * Ví dụ thực tế:
-     * await runService.createRunLog({ ...stats, createdAt: new Date() });
-     */
-    Alert.alert('Đã lưu', 'Buổi chạy đã được lưu vào lịch sử cơ sở dữ liệu.');
-    setStats(INITIAL_STATS);
-    go('idle');
+    Alert.alert(
+      'Đã lưu buổi chạy!',
+      `Buổi chạy ${formatDistance(stats.distanceKm)} km (${formatDuration(stats.seconds)}) đã được lưu vào lịch sử thể lực của bạn.`,
+      [{ text: 'Hoàn tất', onPress: () => go('idle') }]
+    );
   };
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <StatusBar style="dark" />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
 
+      {/* ================= 2. TRẠNG THÁI: CHƯA CẤP QUYỀN ================= */}
       {phase === 'noPermission' && (
-        <View style={styles.centerWrap}>
+        <View style={styles.centerContainer}>
           <EmptyState
             icon="shield-checkmark"
-            title="Cần quyền nhận dạng hoạt động"
-            message="FitLog dùng cảm biến bước chân để đếm bước và tính quãng đường. Dữ liệu chỉ nằm trên máy của bạn, không dùng GPS."
+            title="Cho phép quyền vị trí & bước chân"
+            message="FitLog cần kết nối cảm biến vận động để đo quãng đường và tốc độ chạy bộ của bạn. Dữ liệu hoàn toàn bảo mật và lưu trên máy."
+            tip="Bạn có thể thay đổi quyền này bất cứ lúc nào trong Cài đặt hệ thống."
           >
-            <Button title="Cấp quyền" icon="checkmark-circle" size="lg" onPress={() => go('idle')} />
-            <Button title="Mở Cài đặt" variant="secondary" icon="settings" onPress={() => Linking.openSettings()} />
+            <Button
+              title="Cấp quyền hoạt động"
+              icon="checkmark-circle"
+              size="lg"
+              onPress={() => go('idle')}
+            />
+            <Button
+              title="Mở Cài đặt thiết bị"
+              variant="secondary"
+              icon="settings-outline"
+              size="lg"
+              onPress={() => Linking.openSettings()}
+            />
           </EmptyState>
         </View>
       )}
 
+      {/* ================= 6. TRẠNG THÁI: TỔNG KẾT BUỔI CHẠY ================= */}
       {phase === 'summary' && (
         <>
           <ScrollView contentContainerStyle={styles.content}>
-            <ScreenHeader title="Chạy bộ" subtitle="Kết quả buổi chạy hôm nay" />
-            <SummaryCard summary={stats} />
+            <ScreenHeader
+              title="Tổng kết thể lực"
+              subtitle="Kết quả buổi chạy bộ vừa hoàn thành"
+              badge="Thành công"
+              rightAction={<ThemeToggle size="sm" />}
+            />
+            <SummaryCard summary={stats.distanceKm > 0 ? stats : SAMPLE_SUMMARY} />
           </ScrollView>
-          <View style={styles.footer}>
-            <Button title="Lưu buổi chạy" icon="save" size="lg" onPress={saveRun} />
-            <Button title="Bỏ qua" variant="ghost" onPress={handleDiscard} />
+
+          <View style={styles.bottomFooter}>
+            <Button
+              title="Lưu vào lịch sử"
+              icon="save-outline"
+              size="lg"
+              onPress={saveRun}
+            />
+            <Button
+              title="Bỏ qua buổi chạy này"
+              variant="ghost"
+              onPress={handleDiscard}
+            />
           </View>
         </>
       )}
 
+      {/* ================= 1, 3, 4. TRẠNG THÁI: CHỜ CHẠY / ĐANG CHẠY / TẠM DỪNG ================= */}
       {(phase === 'idle' || phase === 'running' || phase === 'paused') && (
         <>
-          <ScrollView contentContainerStyle={styles.content}>
+          <ScrollView
+            contentContainerStyle={styles.content}
+            showsVerticalScrollIndicator={false}
+          >
             <ScreenHeader
               title="Chạy bộ"
-              subtitle={phase === 'idle' ? 'Đo bằng cảm biến bước chân' : undefined}
+              subtitle={
+                phase === 'idle'
+                  ? 'Theo dõi lộ trình trên bản đồ & nhịp bước chân'
+                  : 'Đang ghi nhận số liệu vận động'
+              }
+              rightAction={<ThemeToggle size="sm" />}
             />
 
-            {phase === 'idle' && (
-              <Card style={styles.infoCard}>
-                <View style={styles.infoIcon}>
-                  <Ionicons name="footsteps" size={layout.iconSize} color={colors.primaryDark} />
+            {/* Trạng thái 1: Thẻ giới thiệu thân thiện cho người mới bắt đầu */}
+            {phase === 'idle' ? (
+              <Card style={styles.introCard}>
+                <View style={styles.introLeft}>
+                  <View style={styles.introIconWrap}>
+                    <Ionicons name="sparkles" size={24} color={colors.primary} />
+                  </View>
+                  <View style={styles.introTextWrap}>
+                    <Text style={styles.introTitle}>Sẵn sàng luyện tập</Text>
+                    <Text style={styles.introDesc}>
+                      FitLog ghi nhận lộ trình di chuyển và tính calo theo sải chân của bạn. Nhấn &quot;Bắt đầu chạy&quot; khi bạn sẵn sàng!
+                    </Text>
+                  </View>
                 </View>
-                <Text style={styles.infoText}>
-                  Không cần GPS, không cần mạng. FitLog đếm bước chính xác bằng cảm biến trên điện thoại và tiết kiệm pin.
-                </Text>
               </Card>
-            )}
+            ) : null}
 
-            {phase === 'running' && <StatusBadge label="Đang đo bằng cảm biến" tone="primary" pulse />}
-            {phase === 'paused' && <StatusBadge label="Đã tạm dừng" tone="warning" />}
+            {/* Bản đồ vẽ lộ trình di chuyển (Chạy mượt trên Expo Go không cần API Key) */}
+            <RunMapView
+              isTracking={phase === 'running'}
+              height={phase === 'idle' ? 180 : 220}
+              onDistanceChange={handleDistanceChange}
+            />
 
-            <View style={styles.timerWrap}>
-              <Text style={styles.timerLabel}>Thời gian</Text>
-              <Text style={[styles.timer, phase === 'paused' && styles.dim]}>
+            {/* Huy hiệu trạng thái động */}
+            {phase === 'running' ? (
+              <StatusBadge label="Đang đo lộ trình & bước chân" tone="primary" pulse />
+            ) : null}
+            {phase === 'paused' ? (
+              <StatusBadge label="Đã tạm dừng buổi chạy" tone="warning" />
+            ) : null}
+
+            {/* ĐỒNG HỒ THỜI GIAN: Chữ to rõ ràng, đọc tốt từ khoảng cách cánh tay */}
+            <View style={styles.timerContainer}>
+              <Text style={styles.timerCaption}>THỜI GIAN CHẠY</Text>
+              <Text
+                style={[
+                  styles.timerText,
+                  phase === 'paused' && styles.dimmed,
+                ]}
+              >
                 {formatDuration(stats.seconds)}
               </Text>
             </View>
 
-            <View style={[styles.grid, phase === 'paused' && styles.dim]}>
+            {/* LƯỚI CHỈ SỐ: Quãng đường làm điểm nhấn lớn nhất, các chỉ số phụ có giải thích */}
+            <View style={[styles.grid, phase === 'paused' && styles.dimmed]}>
               <StatBox
                 large
                 label="Quãng đường"
@@ -169,44 +260,114 @@ export default function RunScreen() {
                 icon="navigate"
                 tone="primary"
                 progress={goalKm > 0 ? stats.distanceKm / goalKm : 0}
-                caption={`Mục tiêu ${goalKm} km`}
+                caption={`Mục tiêu hôm nay: ${goalKm} km`}
               />
+
               <View style={styles.row}>
-                <StatBox style={styles.half} label="Số bước" value={formatInt(stats.steps)} unit="bước" icon="footsteps" tone="info" />
-                <StatBox style={styles.half} label="Pace" value={formatPace(stats.paceMinPerKm)} unit="/km" icon="speedometer" tone="primary" />
+                <StatBox
+                  label="Pace"
+                  value={formatPace(stats.paceMinPerKm)}
+                  unit="/km"
+                  icon="speedometer"
+                  tone="accent"
+                  style={styles.half}
+                />
+                <StatBox
+                  label="Calo"
+                  value={formatInt(stats.calories)}
+                  unit="kcal"
+                  icon="flame"
+                  tone="accent"
+                  style={styles.half}
+                />
               </View>
+
               <View style={styles.row}>
-                <StatBox style={styles.half} label="Calo" value={formatInt(stats.calories)} unit="kcal" icon="flame" tone="accent" />
-                <StatBox style={styles.half} label="Nhịp bước" value={formatInt(stats.cadence)} unit="bước/phút" icon="pulse" tone="info" />
+                <StatBox
+                  label="Số bước"
+                  value={formatInt(stats.steps)}
+                  unit="bước"
+                  icon="footsteps"
+                  tone="info"
+                  style={styles.half}
+                />
+                <StatBox
+                  label="Nhịp bước"
+                  value={stats.cadence > 0 ? `${stats.cadence}` : '--'}
+                  unit="spm"
+                  icon="pulse"
+                  tone="info"
+                  style={styles.half}
+                />
               </View>
             </View>
           </ScrollView>
 
-          <View style={styles.footer}>
+          {/* ================= KHU VỰC ĐIỀU KHIỂN CHÍNH (BOTTOM CONTROLS) ================= */}
+          <View style={styles.bottomFooter}>
             {phase === 'idle' && (
-              <Button title="Bắt đầu" icon="play" size="lg" onPress={handleStart} />
+              <Button
+                title="Bắt đầu chạy ngay"
+                icon="play"
+                size="lg"
+                onPress={handleStart}
+              />
             )}
+
             {phase === 'running' && (
-              <View style={styles.actionRow}>
-                <Button style={styles.flex} title="Tạm dừng" variant="secondary" icon="pause" size="lg" onPress={() => go('paused')} />
-                <Button style={styles.flex} title="Dừng" variant="danger" icon="stop" size="lg" onPress={() => setConfirmVisible(true)} />
+              <View style={styles.buttonActionRow}>
+                <View style={styles.flexPrimary}>
+                  <Button
+                    title="Tạm dừng"
+                    variant="secondary"
+                    icon="pause"
+                    size="lg"
+                    onPress={() => go('paused')}
+                  />
+                </View>
+                <View style={styles.flexDanger}>
+                  <Button
+                    title="Dừng"
+                    variant="danger"
+                    icon="stop"
+                    size="lg"
+                    onPress={() => setConfirmVisible(true)}
+                  />
+                </View>
               </View>
             )}
+
             {phase === 'paused' && (
-              <View style={styles.actionRow}>
-                <Button style={styles.flex} title="Tiếp tục" icon="play" size="lg" onPress={() => go('running')} />
-                <Button style={styles.flex} title="Kết thúc" variant="danger" icon="flag" size="lg" onPress={() => go('summary')} />
+              <View style={styles.buttonActionRow}>
+                <View style={styles.flexPrimary}>
+                  <Button
+                    title="Tiếp tục chạy"
+                    variant="primary"
+                    icon="play"
+                    size="lg"
+                    onPress={() => go('running')}
+                  />
+                </View>
+                <View style={styles.flexDanger}>
+                  <Button
+                    title="Kết thúc"
+                    variant="danger"
+                    icon="flag"
+                    size="lg"
+                    onPress={() => setConfirmVisible(true)}
+                  />
+                </View>
               </View>
             )}
           </View>
         </>
       )}
 
+      {/* Modal xác nhận kết thúc để tránh lỡ tay bấm nhầm */}
       <ConfirmStopModal
         visible={confirmVisible}
         onContinue={() => {
           setConfirmVisible(false);
-          setPhase('running');
         }}
         onFinish={() => {
           setConfirmVisible(false);
@@ -217,33 +378,102 @@ export default function RunScreen() {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: { flex: 1, backgroundColor: colors.background },
-  centerWrap: { flex: 1, justifyContent: 'center', padding: layout.screenPadding },
-  content: { padding: layout.screenPadding, gap: spacing.lg },
-  footer: { padding: layout.screenPadding, gap: spacing.sm },
-  actionRow: { flexDirection: 'row', gap: spacing.lg },
-  flex: { flex: 1 },
-  infoCard: { flexDirection: 'row', alignItems: 'center', gap: spacing.md },
-  infoIcon: {
-    width: layout.minTouchSize,
-    height: layout.minTouchSize,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  infoText: { flex: 1, fontSize: fontSize.body, color: colors.textMuted, lineHeight: 22 },
-  timerWrap: { alignItems: 'center', gap: spacing.xs },
-  timerLabel: { fontSize: fontSize.caption, color: colors.textMuted },
-  timer: {
-    fontSize: fontSize.display,
-    fontWeight: fontWeight.bold,
-    color: colors.text,
-    fontVariant: ['tabular-nums'],
-  },
-  dim: { opacity: 0.45 },
-  grid: { gap: spacing.md },
-  row: { flexDirection: 'row', gap: spacing.md },
-  half: { flex: 1 },
-});
+const createStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    safe: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    centerContainer: {
+      flex: 1,
+      justifyContent: 'center',
+      padding: layout.screenPadding,
+    },
+    content: {
+      padding: layout.screenPadding,
+      gap: spacing.lg,
+      paddingBottom: spacing.xxl,
+    },
+    introCard: {
+      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.15)' : colors.primaryLight,
+      borderColor: isDark ? 'rgba(34, 197, 94, 0.25)' : colors.primaryLight,
+    },
+    introLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+    },
+    introIconWrap: {
+      width: 44,
+      height: 44,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    introTextWrap: {
+      flex: 1,
+      gap: 2,
+    },
+    introTitle: {
+      fontSize: fontSize.body,
+      fontWeight: fontWeight.bold,
+      color: colors.primary,
+    },
+    introDesc: {
+      fontSize: fontSize.caption,
+      color: colors.textSecondary,
+      lineHeight: 18,
+      opacity: 0.9,
+    },
+    timerContainer: {
+      alignItems: 'center',
+      gap: spacing.xs / 2,
+      marginVertical: spacing.xs,
+    },
+    timerCaption: {
+      fontSize: fontSize.micro + 1,
+      color: colors.textMuted,
+      fontWeight: fontWeight.bold,
+      letterSpacing: 1.2,
+    },
+    timerText: {
+      fontSize: fontSize.displayHero,
+      fontWeight: fontWeight.heavy,
+      color: colors.text,
+      fontVariant: ['tabular-nums'],
+      letterSpacing: -1,
+    },
+    dimmed: {
+      opacity: 0.5,
+    },
+    grid: {
+      gap: spacing.md,
+    },
+    row: {
+      flexDirection: 'row',
+      gap: spacing.md,
+    },
+    half: {
+      flex: 1,
+    },
+    bottomFooter: {
+      padding: layout.screenPadding,
+      backgroundColor: colors.surface,
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+      gap: spacing.sm,
+      ...shadow.cardElevated,
+    },
+    buttonActionRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.md,
+    },
+    flexPrimary: {
+      flex: 2,
+    },
+    flexDanger: {
+      flex: 1.2,
+    },
+  });

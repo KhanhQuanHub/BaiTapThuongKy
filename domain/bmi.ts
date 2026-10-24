@@ -1,4 +1,4 @@
-import { colors } from '../constants/theme';
+import { colors as defaultColors, ThemeColors } from '../constants/theme';
 
 export type BmiClassification = {
   bmi: number;
@@ -17,14 +17,21 @@ export type BmiClassification = {
  *
  * @param weightKg Cân nặng (kg)
  * @param heightCm Chiều cao (cm)
+ * @param themeColors Bảng màu chủ đề tùy chọn (mặc định theo colors)
  */
-export function calculateBmi(weightKg: number, heightCm: number): BmiClassification {
+export function calculateBmi(
+  weightKg: number,
+  heightCm: number,
+  themeColors?: ThemeColors
+): BmiClassification {
+  const c = themeColors ?? defaultColors;
+
   if (!heightCm || heightCm <= 0 || !weightKg || weightKg <= 0) {
     return {
       bmi: 0,
       label: 'Bình thường',
-      color: colors.textMuted,
-      bgColor: colors.border,
+      color: c.textMuted,
+      bgColor: c.border,
       advice: 'Chưa có đủ số đo để tính toán BMI.',
     };
   }
@@ -37,8 +44,8 @@ export function calculateBmi(weightKg: number, heightCm: number): BmiClassificat
     return {
       bmi,
       label: 'Gầy',
-      color: colors.info,
-      bgColor: colors.background,
+      color: c.info,
+      bgColor: c.infoLight,
       advice: 'Thể trạng gầy, nên bổ sung dinh dưỡng và tập luyện tăng cơ.',
     };
   }
@@ -47,8 +54,8 @@ export function calculateBmi(weightKg: number, heightCm: number): BmiClassificat
     return {
       bmi,
       label: 'Bình thường',
-      color: colors.primaryDark,
-      bgColor: colors.primaryLight,
+      color: c.primary,
+      bgColor: c.primaryLight,
       advice: 'Cân đối lý tưởng, duy trì chế độ sinh hoạt và bài tập hiện tại.',
     };
   }
@@ -57,8 +64,8 @@ export function calculateBmi(weightKg: number, heightCm: number): BmiClassificat
     return {
       bmi,
       label: 'Thừa cân',
-      color: colors.accent,
-      bgColor: colors.accentLight,
+      color: c.accent,
+      bgColor: c.accentLight,
       advice: 'Hơi thừa cân, nên kết hợp bài tập Cardio đốt mỡ và kiểm soát calo.',
     };
   }
@@ -66,8 +73,8 @@ export function calculateBmi(weightKg: number, heightCm: number): BmiClassificat
   return {
     bmi,
     label: 'Béo phì',
-    color: colors.danger,
-    bgColor: '#FEE2E2',
+    color: c.danger,
+    bgColor: c.dangerLight,
     advice: 'Cần chú ý giảm cân, ưu tiên bài tập an toàn cho xương khớp.',
   };
 }

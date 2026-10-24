@@ -1,19 +1,23 @@
 import { useEffect, useState } from 'react';
 import { Animated, StyleSheet, Text, View } from 'react-native';
-import { colors, fontSize, fontWeight, radius, spacing } from '../../constants/theme';
+import { fontSize, fontWeight, radius, spacing } from '../../constants/theme';
+import { useTheme } from '../../store/themeStore';
 
-type Props = {
+export type StatusBadgeProps = {
   label: string;
-  tone?: 'primary' | 'warning';
-  pulse?: boolean; // chấm nhấp nháy khi đang đo
+  tone?: 'primary' | 'warning' | 'info';
+  pulse?: boolean;
 };
 
-const tones = {
-  primary: { bg: colors.primaryLight, fg: colors.primaryDark, dot: colors.primary },
-  warning: { bg: colors.accentLight, fg: colors.accent, dot: colors.warning },
-};
+export default function StatusBadge({ label, tone = 'primary', pulse }: StatusBadgeProps) {
+  const { colors } = useTheme();
 
-export default function StatusBadge({ label, tone = 'primary', pulse }: Props) {
+  const tones = {
+    primary: { bg: colors.primaryLight, fg: colors.primary, dot: colors.primary },
+    warning: { bg: colors.warningLight, fg: colors.warning, dot: colors.warning },
+    info: { bg: colors.infoLight, fg: colors.info, dot: colors.info },
+  };
+
   const t = tones[tone];
   const [opacity] = useState(() => new Animated.Value(1));
 
@@ -24,8 +28,8 @@ export default function StatusBadge({ label, tone = 'primary', pulse }: Props) {
     }
     const loop = Animated.loop(
       Animated.sequence([
-        Animated.timing(opacity, { toValue: 0.3, duration: 700, useNativeDriver: true }),
-        Animated.timing(opacity, { toValue: 1, duration: 700, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 0.35, duration: 650, useNativeDriver: true }),
+        Animated.timing(opacity, { toValue: 1, duration: 650, useNativeDriver: true }),
       ])
     );
     loop.start();
@@ -33,7 +37,12 @@ export default function StatusBadge({ label, tone = 'primary', pulse }: Props) {
   }, [pulse, opacity]);
 
   return (
-    <View style={[styles.badge, { backgroundColor: t.bg }]}>
+    <View
+      accessible
+      accessibilityRole="text"
+      accessibilityLabel={`Trạng thái: ${label}`}
+      style={[styles.badge, { backgroundColor: t.bg }]}
+    >
       <Animated.View style={[styles.dot, { backgroundColor: t.dot, opacity }]} />
       <Text style={[styles.text, { color: t.fg }]}>{label}</Text>
     </View>
@@ -50,6 +59,14 @@ const styles = StyleSheet.create({
     borderRadius: radius.pill,
     alignSelf: 'center',
   },
-  dot: { width: 8, height: 8, borderRadius: radius.pill },
-  text: { fontSize: fontSize.caption, fontWeight: fontWeight.semibold },
+  dot: {
+    width: 8,
+    height: 8,
+    borderRadius: radius.pill,
+  },
+  text: {
+    fontSize: fontSize.caption,
+    fontWeight: fontWeight.bold,
+    letterSpacing: 0.2,
+  },
 });

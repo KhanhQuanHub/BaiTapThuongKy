@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -19,17 +19,25 @@ import { z } from 'zod';
 import Button from '../../components/ui/Button';
 import Card from '../../components/ui/Card';
 import Input from '../../components/ui/Input';
+import ThemeToggle from '../../components/ui/ThemeToggle';
 import {
-  colors, fontSize, fontWeight, layout, radius, spacing,
+  fontSize,
+  fontWeight,
+  layout,
+  radius,
+  shadow,
+  spacing,
+  ThemeColors,
 } from '../../constants/theme';
 import { RootStackParamList } from '../../navigation/RootNavigator';
 import { useAuthStore } from '../../store/authStore';
+import { useTheme } from '../../store/themeStore';
 
 const loginSchema = z.object({
   email: z
     .string()
     .min(1, 'Vui lòng nhập địa chỉ email')
-    .email('Email không đúng định dạng'),
+    .email('Email không đúng định dạng (ví dụ: ten@fitlog.vn)'),
   password: z
     .string()
     .min(6, 'Mật khẩu phải có tối thiểu 6 ký tự'),
@@ -42,6 +50,7 @@ type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 export default function LoginScreen({ navigation }: Props) {
   const [secureText, setSecureText] = useState(true);
   const { login, isLoading } = useAuthStore();
+  const { colors, isDark } = useTheme();
 
   const {
     control,
@@ -65,31 +74,41 @@ export default function LoginScreen({ navigation }: Props) {
     await login(data.email, data.password);
   };
 
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <StatusBar style="dark" />
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
       <KeyboardAvoidingView
-        style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        style={styles.keyboardView}
       >
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
+          {/* Thanh trên cùng chứa nút Theme Switcher */}
+          <View style={styles.topBar}>
+            <View />
+            <ThemeToggle size="sm" />
+          </View>
+
           {/* Logo & Tiêu đề ứng dụng */}
           <View style={styles.brandHeader}>
             <View style={styles.logoBadge}>
-              <Ionicons name="fitness" size={44} color={colors.primaryDark} />
+              <Ionicons name="fitness" size={44} color={colors.primary} />
             </View>
             <Text style={styles.brandTitle}>FitLog</Text>
             <Text style={styles.brandSubtitle}>
-              Theo dõi tập luyện & sức khỏe cá nhân
+              Quản lý luyện tập & sức khỏe cá nhân dễ dàng
             </Text>
           </View>
 
           {/* Form đăng nhập */}
-          <Card style={styles.formCard}>
-            <Text style={styles.formTitle}>Đăng nhập</Text>
+          <Card elevated style={styles.formCard}>
+            <Text style={styles.formTitle}>Chào mừng bạn trở lại</Text>
+            <Text style={styles.formDesc}>Đăng nhập để tiếp tục lộ trình rèn luyện hôm nay</Text>
 
             <View style={styles.fieldsContainer}>
               <Controller
@@ -97,8 +116,8 @@ export default function LoginScreen({ navigation }: Props) {
                 name="email"
                 render={({ field: { onChange, onBlur, value } }) => (
                   <Input
-                    label="Email"
-                    placeholder="ví dụ: fitlog@domain.com"
+                    label="Địa chỉ email"
+                    placeholder="ví dụ: ten@fitlog.vn"
                     keyboardType="email-address"
                     autoCapitalize="none"
                     autoCorrect={false}
@@ -117,7 +136,7 @@ export default function LoginScreen({ navigation }: Props) {
                 render={({ field: { onChange, onBlur, value } }) => (
                   <Input
                     label="Mật khẩu"
-                    placeholder="Tối thiểu 6 ký tự"
+                    placeholder="Nhập mật khẩu (tối thiểu 6 ký tự)"
                     secureTextEntry={secureText}
                     autoCapitalize="none"
                     leftIcon="lock-closed-outline"
@@ -133,19 +152,19 @@ export default function LoginScreen({ navigation }: Props) {
             </View>
 
             <Button
-              title={isLoading ? 'Đang đăng nhập...' : 'Đăng nhập'}
+              title="Đăng nhập ngay"
               icon="log-in-outline"
               size="lg"
-              disabled={isLoading}
+              loading={isLoading}
               onPress={handleSubmit(onSubmit)}
             />
           </Card>
 
-          {/* Gợi ý tài khoản kiểm thử */}
+          {/* Thẻ tài khoản thử nghiệm nhanh */}
           <Card style={styles.demoCard}>
             <View style={styles.demoHeader}>
-              <Ionicons name="information-circle" size={20} color={colors.info} />
-              <Text style={styles.demoTitle}>Tài khoản thử nghiệm sẵn</Text>
+              <Ionicons name="flash-outline" size={18} color={colors.info} />
+              <Text style={styles.demoTitle}>Tài khoản thử nghiệm sẵn có</Text>
             </View>
             <View style={styles.demoContent}>
               <View style={styles.demoRow}>
@@ -158,22 +177,24 @@ export default function LoginScreen({ navigation }: Props) {
               </View>
             </View>
             <Button
-              title="Điền nhanh tài khoản mẫu"
+              title="Điền sẵn tài khoản mẫu"
               variant="secondary"
-              icon="flash-outline"
+              size="md"
+              icon="copy-outline"
               onPress={fillDemoAccount}
             />
           </Card>
 
-          {/* Chuyển sang màn hình Đăng ký */}
+          {/* Liên kết điều hướng sang Đăng ký */}
           <View style={styles.footerRow}>
-            <Text style={styles.footerText}>Chưa có tài khoản?</Text>
+            <Text style={styles.footerText}>Chưa có tài khoản FitLog?</Text>
             <Pressable
               accessibilityRole="button"
-              style={styles.linkButton}
+              accessibilityLabel="Chuyển đến màn hình đăng ký tài khoản"
               onPress={() => navigation.navigate('Register')}
+              style={styles.linkButton}
             >
-              <Text style={styles.linkText}>Đăng ký</Text>
+              <Text style={styles.linkText}>Đăng ký ngay</Text>
             </Pressable>
           </View>
         </ScrollView>
@@ -182,106 +203,122 @@ export default function LoginScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    justifyContent: 'center',
-    padding: layout.screenPadding,
-    gap: spacing.xl,
-  },
-  brandHeader: {
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  logoBadge: {
-    width: 80,
-    height: 80,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-    marginBottom: spacing.sm,
-  },
-  brandTitle: {
-    fontSize: fontSize.display - 16,
-    fontWeight: fontWeight.bold,
-    color: colors.primaryDark,
-    letterSpacing: 0.5,
-  },
-  brandSubtitle: {
-    fontSize: fontSize.body,
-    color: colors.textMuted,
-    textAlign: 'center',
-  },
-  formCard: {
-    gap: spacing.lg,
-  },
-  formTitle: {
-    fontSize: fontSize.title,
-    fontWeight: fontWeight.bold,
-    color: colors.text,
-  },
-  fieldsContainer: {
-    gap: spacing.md,
-  },
-  footerRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  footerText: {
-    fontSize: fontSize.body,
-    color: colors.textMuted,
-  },
-  linkButton: {
-    minHeight: layout.minTouchSize,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xs,
-  },
-  linkText: {
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-    color: colors.primary,
-  },
-  demoCard: {
-    gap: spacing.md,
-    backgroundColor: colors.surface,
-    borderColor: colors.info,
-    borderWidth: 1,
-  },
-  demoHeader: {
-    flexDirection: 'row',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  demoTitle: {
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.bold,
-    color: colors.info,
-  },
-  demoContent: {
-    gap: spacing.xs,
-  },
-  demoRow: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-  },
-  demoLabel: {
-    fontSize: fontSize.caption,
-    color: colors.textMuted,
-  },
-  demoValue: {
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-    color: colors.text,
-  },
-});
+const createStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    safe: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    keyboardView: {
+      flex: 1,
+    },
+    scrollContent: {
+      paddingHorizontal: layout.screenPadding,
+      gap: spacing.lg,
+      paddingBottom: spacing.xxl,
+    },
+    topBar: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingTop: spacing.xs,
+    },
+    brandHeader: {
+      alignItems: 'center',
+      gap: spacing.xs / 2,
+    },
+    logoBadge: {
+      width: 84,
+      height: 84,
+      borderRadius: radius.pill,
+      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.15)' : colors.primaryLight,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: spacing.xs,
+      borderWidth: 2,
+      borderColor: colors.surface,
+      ...shadow.card,
+    },
+    brandTitle: {
+      fontSize: fontSize.display - 14,
+      fontWeight: fontWeight.heavy,
+      color: colors.primary,
+      letterSpacing: -0.5,
+    },
+    brandSubtitle: {
+      fontSize: fontSize.body,
+      color: colors.textMuted,
+      textAlign: 'center',
+    },
+    formCard: {
+      gap: spacing.md,
+    },
+    formTitle: {
+      fontSize: fontSize.title,
+      fontWeight: fontWeight.bold,
+      color: colors.text,
+      letterSpacing: -0.3,
+    },
+    formDesc: {
+      fontSize: fontSize.caption,
+      color: colors.textMuted,
+      marginTop: -spacing.xs / 2,
+    },
+    fieldsContainer: {
+      gap: spacing.md,
+      marginVertical: spacing.xs,
+    },
+    demoCard: {
+      gap: spacing.md,
+      backgroundColor: colors.surface,
+      borderColor: isDark ? '#334155' : colors.infoLight,
+      borderWidth: 1.5,
+    },
+    demoHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+    },
+    demoTitle: {
+      fontSize: fontSize.body,
+      fontWeight: fontWeight.bold,
+      color: colors.info,
+    },
+    demoContent: {
+      gap: spacing.xs,
+    },
+    demoRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+    },
+    demoLabel: {
+      fontSize: fontSize.caption,
+      color: colors.textMuted,
+    },
+    demoValue: {
+      fontSize: fontSize.body,
+      fontWeight: fontWeight.bold,
+      color: colors.text,
+    },
+    footerRow: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: spacing.xs,
+    },
+    footerText: {
+      fontSize: fontSize.body,
+      color: colors.textMuted,
+    },
+    linkButton: {
+      minHeight: layout.minTouchSize,
+      justifyContent: 'center',
+      paddingHorizontal: spacing.xs,
+    },
+    linkText: {
+      fontSize: fontSize.body,
+      fontWeight: fontWeight.bold,
+      color: colors.primary,
+    },
+  });
