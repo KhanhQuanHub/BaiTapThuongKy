@@ -1,7 +1,11 @@
+import { useMemo } from 'react';
 import { StyleSheet, Text, View } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import Card from '../ui/Card';
-import { colors, fontSize, fontWeight, radius, spacing } from '../../constants/theme';
+import {
+  fontSize, fontWeight, radius, spacing, ThemeColors,
+} from '../../constants/theme';
+import { useTheme } from '../../store/themeStore';
 import { formatDistance, formatDuration, formatInt, formatPace } from '../../utils/format';
 
 export type RunSummary = {
@@ -12,33 +16,85 @@ export type RunSummary = {
   calories: number;
 };
 
-type Props = { summary: RunSummary };
+export type SummaryCardProps = {
+  summary: RunSummary;
+};
 
-export default function SummaryCard({ summary }: Props) {
+export default function SummaryCard({ summary }: SummaryCardProps) {
+  const { colors, isDark } = useTheme();
+
   const rows = [
-    { label: 'Thời gian', value: formatDuration(summary.seconds) },
-    { label: 'Pace trung bình', value: `${formatPace(summary.paceMinPerKm)} /km` },
-    { label: 'Số bước', value: `${formatInt(summary.steps)} bước` },
-    { label: 'Calo tiêu hao', value: `${formatInt(summary.calories)} kcal`, accent: true },
+    {
+      label: 'Thời gian vận động',
+      value: formatDuration(summary.seconds),
+      icon: 'time-outline' as const,
+    },
+    {
+      label: 'Pace trung bình',
+      value: `${formatPace(summary.paceMinPerKm)} /km`,
+      hint: 'Thời gian chạy mỗi 1 km',
+      icon: 'speedometer-outline' as const,
+    },
+    {
+      label: 'Số bước chân',
+      value: `${formatInt(summary.steps)} bước`,
+      icon: 'footsteps-outline' as const,
+    },
+    {
+      label: 'Năng lượng tiêu hao',
+      value: `${formatInt(summary.calories)} kcal`,
+      hint: 'Calo đốt cháy ước tính',
+      accent: true,
+      icon: 'flame-outline' as const,
+    },
   ];
 
-  return (
-    <Card style={styles.card}>
-      <View style={styles.iconWrap}>
-        <Ionicons name="trophy" size={36} color={colors.primaryDark} />
-      </View>
-      <Text style={styles.title}>Hoàn thành buổi chạy!</Text>
+  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
-      <View style={styles.distanceRow}>
-        <Text style={styles.distance}>{formatDistance(summary.distanceKm)}</Text>
+  return (
+    <Card elevated style={styles.card}>
+      {/* Huy hiệu hoàn thành */}
+      <View style={styles.trophyRing}>
+        <View style={styles.trophyIconWrap}>
+          <Ionicons name="trophy" size={38} color={colors.primary} />
+        </View>
+      </View>
+
+      <Text style={styles.title}>Xuất sắc! Hoàn thành buổi chạy</Text>
+      <Text style={styles.subtitle}>
+        Bạn đã hoàn thành mục tiêu rèn luyện thể lực hôm nay.
+      </Text>
+
+      {/* Điểm nhấn chính: Quãng đường chạy */}
+      <View style={styles.distanceBadge}>
+        <Text style={styles.distanceValue}>{formatDistance(summary.distanceKm)}</Text>
         <Text style={styles.distanceUnit}>km</Text>
       </View>
 
+      {/* Bảng chi tiết các chỉ số */}
       <View style={styles.list}>
         {rows.map((r, i) => (
-          <View key={r.label} style={[styles.row, i > 0 && styles.rowBorder]}>
-            <Text style={styles.rowLabel}>{r.label}</Text>
-            <Text style={[styles.rowValue, r.accent && { color: colors.accent }]}>{r.value}</Text>
+          <View
+            key={r.label}
+            style={[styles.row, i > 0 && styles.rowBorder]}
+          >
+            <View style={styles.rowLeft}>
+              <View style={[styles.rowIconWrap, r.accent && styles.rowIconWrapAccent]}>
+                <Ionicons
+                  name={r.icon}
+                  size={18}
+                  color={r.accent ? colors.accent : colors.primary}
+                />
+              </View>
+              <View>
+                <Text style={styles.rowLabel}>{r.label}</Text>
+                {r.hint ? <Text style={styles.rowHint}>{r.hint}</Text> : null}
+              </View>
+            </View>
+
+            <Text style={[styles.rowValue, r.accent && styles.rowValueAccent]}>
+              {r.value}
+            </Text>
           </View>
         ))}
       </View>
@@ -46,38 +102,118 @@ export default function SummaryCard({ summary }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  card: { alignItems: 'center', gap: spacing.md, paddingVertical: spacing.xl },
-  iconWrap: {
-    width: 72,
-    height: 72,
-    borderRadius: radius.pill,
-    backgroundColor: colors.primaryLight,
-    alignItems: 'center',
-    justifyContent: 'center',
-  },
-  title: { fontSize: fontSize.title, fontWeight: fontWeight.bold, color: colors.text },
-  distanceRow: { flexDirection: 'row', alignItems: 'baseline', gap: spacing.sm },
-  distance: {
-    fontSize: fontSize.display,
-    fontWeight: fontWeight.bold,
-    color: colors.primaryDark,
-    fontVariant: ['tabular-nums'],
-  },
-  distanceUnit: { fontSize: fontSize.subtitle, color: colors.textMuted },
-  list: { alignSelf: 'stretch', marginTop: spacing.sm },
-  row: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    paddingVertical: spacing.md,
-  },
-  rowBorder: { borderTopWidth: 1, borderTopColor: colors.border },
-  rowLabel: { fontSize: fontSize.body, color: colors.textMuted },
-  rowValue: {
-    fontSize: fontSize.subtitle,
-    fontWeight: fontWeight.semibold,
-    color: colors.text,
-    fontVariant: ['tabular-nums'],
-  },
-});
+const createStyles = (colors: ThemeColors, isDark: boolean) =>
+  StyleSheet.create({
+    card: {
+      alignItems: 'center',
+      paddingVertical: spacing.xl,
+      paddingHorizontal: spacing.lg,
+      gap: spacing.sm,
+    },
+    trophyRing: {
+      width: 80,
+      height: 80,
+      borderRadius: radius.pill,
+      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.18)' : colors.primaryLight,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginBottom: spacing.xs,
+    },
+    trophyIconWrap: {
+      width: 60,
+      height: 60,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surface,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    title: {
+      fontSize: fontSize.title,
+      fontWeight: fontWeight.heavy,
+      color: colors.text,
+      textAlign: 'center',
+      letterSpacing: -0.3,
+    },
+    subtitle: {
+      fontSize: fontSize.body,
+      color: colors.textMuted,
+      textAlign: 'center',
+      marginBottom: spacing.sm,
+    },
+    distanceBadge: {
+      flexDirection: 'row',
+      alignItems: 'baseline',
+      gap: spacing.xs,
+      backgroundColor: colors.surfaceAlt,
+      paddingHorizontal: spacing.xl,
+      paddingVertical: spacing.md,
+      borderRadius: radius.xl,
+      marginVertical: spacing.xs,
+    },
+    distanceValue: {
+      fontSize: fontSize.displayHero,
+      fontWeight: fontWeight.heavy,
+      color: colors.primary,
+      fontVariant: ['tabular-nums'],
+      letterSpacing: -1.5,
+    },
+    distanceUnit: {
+      fontSize: fontSize.title,
+      fontWeight: fontWeight.bold,
+      color: colors.textMuted,
+    },
+    list: {
+      alignSelf: 'stretch',
+      marginTop: spacing.md,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.lg,
+      paddingHorizontal: spacing.md,
+      backgroundColor: colors.surface,
+    },
+    row: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      paddingVertical: spacing.md,
+    },
+    rowBorder: {
+      borderTopWidth: 1,
+      borderTopColor: colors.border,
+    },
+    rowLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+      flex: 1,
+    },
+    rowIconWrap: {
+      width: 32,
+      height: 32,
+      borderRadius: radius.pill,
+      backgroundColor: colors.primaryLight,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    rowIconWrapAccent: {
+      backgroundColor: colors.accentLight,
+    },
+    rowLabel: {
+      fontSize: fontSize.body,
+      color: colors.textSecondary,
+      fontWeight: fontWeight.medium,
+    },
+    rowHint: {
+      fontSize: fontSize.micro,
+      color: colors.textMuted,
+    },
+    rowValue: {
+      fontSize: fontSize.subtitle,
+      fontWeight: fontWeight.bold,
+      color: colors.text,
+      fontVariant: ['tabular-nums'],
+    },
+    rowValueAccent: {
+      color: colors.accent,
+    },
+  });

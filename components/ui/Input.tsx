@@ -1,4 +1,4 @@
-import { forwardRef, useState } from 'react';
+import { ComponentRef, forwardRef, useState } from 'react';
 import {
   Pressable,
   StyleSheet,
@@ -10,21 +10,24 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  colors, fontSize, fontWeight, layout, radius, spacing,
+  fontSize, fontWeight, layout, radius, shadow, spacing,
 } from '../../constants/theme';
+import { useTheme } from '../../store/themeStore';
 
 export type InputProps = TextInputProps & {
   label?: string;
   error?: string;
+  hint?: string;
   leftIcon?: keyof typeof Ionicons.glyphMap;
   rightIcon?: keyof typeof Ionicons.glyphMap;
   onRightIconPress?: () => void;
   containerStyle?: ViewStyle;
 };
 
-const Input = forwardRef<TextInput, InputProps>(({
+const Input = forwardRef<ComponentRef<typeof TextInput>, InputProps>(({
   label,
   error,
+  hint,
   leftIcon,
   rightIcon,
   onRightIconPress,
@@ -32,37 +35,49 @@ const Input = forwardRef<TextInput, InputProps>(({
   secureTextEntry,
   ...props
 }, ref) => {
+  const { colors } = useTheme();
   const [isFocused, setIsFocused] = useState(false);
 
   return (
     <View style={[styles.wrapper, containerStyle]}>
-      {label ? <Text style={styles.label}>{label}</Text> : null}
+      {label ? <Text style={[styles.label, { color: colors.text }]}>{label}</Text> : null}
       <View
         style={[
           styles.inputContainer,
-          isFocused && styles.inputFocused,
-          Boolean(error) && styles.inputError,
+          {
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
+          },
+          isFocused && { borderColor: colors.primary },
+          Boolean(error) && { borderColor: colors.danger },
+          isFocused && shadow.subtle,
         ]}
       >
         {leftIcon ? (
           <View style={styles.leftIconWrap}>
-            <Ionicons name={leftIcon} size={20} color={isFocused ? colors.primary : colors.textMuted} />
+            <Ionicons
+              name={leftIcon}
+              size={20}
+              color={error ? colors.danger : isFocused ? colors.primary : colors.textMuted}
+            />
           </View>
         ) : null}
 
         <TextInput
           ref={ref}
-          style={styles.textInput}
+          style={[styles.textInput, { color: colors.text }]}
           placeholderTextColor={colors.textMuted}
           secureTextEntry={secureTextEntry}
           onFocus={() => setIsFocused(true)}
           onBlur={() => setIsFocused(false)}
+          accessibilityLabel={label}
           {...props}
         />
 
         {rightIcon ? (
           <Pressable
             accessibilityRole="button"
+            accessibilityLabel="Nút chức năng nhập liệu"
             style={styles.rightIconWrap}
             onPress={onRightIconPress}
             hitSlop={{ top: spacing.sm, bottom: spacing.sm, left: spacing.sm, right: spacing.sm }}
@@ -72,7 +87,14 @@ const Input = forwardRef<TextInput, InputProps>(({
         ) : null}
       </View>
 
-      {error ? <Text style={styles.errorText}>{error}</Text> : null}
+      {error ? (
+        <View style={styles.errorRow}>
+          <Ionicons name="alert-circle" size={14} color={colors.danger} />
+          <Text style={[styles.errorText, { color: colors.danger }]}>{error}</Text>
+        </View>
+      ) : hint ? (
+        <Text style={[styles.hintText, { color: colors.textMuted }]}>{hint}</Text>
+      ) : null}
     </View>
   );
 });
@@ -87,24 +109,15 @@ const styles = StyleSheet.create({
   },
   label: {
     fontSize: fontSize.body,
-    fontWeight: fontWeight.medium,
-    color: colors.text,
+    fontWeight: fontWeight.semibold,
   },
   inputContainer: {
     flexDirection: 'row',
     alignItems: 'center',
     minHeight: layout.buttonHeight,
-    backgroundColor: colors.surface,
     borderWidth: 1.5,
-    borderColor: colors.border,
     borderRadius: radius.md,
     paddingHorizontal: spacing.md,
-  },
-  inputFocused: {
-    borderColor: colors.primary,
-  },
-  inputError: {
-    borderColor: colors.danger,
   },
   leftIconWrap: {
     marginRight: spacing.sm,
@@ -120,12 +133,18 @@ const styles = StyleSheet.create({
   textInput: {
     flex: 1,
     fontSize: fontSize.body,
-    color: colors.text,
     paddingVertical: spacing.sm,
+  },
+  errorRow: {
+    flexDirection: 'row',
+    alignItems: 'center',
+    gap: spacing.xs / 2,
   },
   errorText: {
     fontSize: fontSize.caption,
-    color: colors.danger,
     fontWeight: fontWeight.medium,
+  },
+  hintText: {
+    fontSize: fontSize.caption - 1,
   },
 });

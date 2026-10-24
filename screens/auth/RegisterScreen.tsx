@@ -1,4 +1,4 @@
-import { useState } from 'react';
+import { useMemo, useState } from 'react';
 import {
   KeyboardAvoidingView,
   Platform,
@@ -20,10 +20,15 @@ import Card from '../../components/ui/Card';
 import Input from '../../components/ui/Input';
 import ScreenHeader from '../../components/ui/ScreenHeader';
 import {
-  colors, fontSize, fontWeight, layout, spacing,
+  fontSize,
+  fontWeight,
+  layout,
+  spacing,
+  ThemeColors,
 } from '../../constants/theme';
 import { RootStackParamList } from '../../navigation/RootNavigator';
 import { useAuthStore } from '../../store/authStore';
+import { useTheme } from '../../store/themeStore';
 
 const registerSchema = z
   .object({
@@ -34,17 +39,17 @@ const registerSchema = z
     email: z
       .string()
       .min(1, 'Vui lòng nhập email')
-      .email('Email không đúng định dạng'),
+      .email('Email không đúng định dạng (ví dụ: an@fitlog.vn)'),
     password: z
       .string()
       .min(6, 'Mật khẩu phải có tối thiểu 6 ký tự'),
     confirmPassword: z
       .string()
-      .min(1, 'Vui lòng xác nhận lại mật khẩu'),
+      .min(1, 'Vui lòng nhập lại mật khẩu để xác nhận'),
   })
   .refine((data) => data.password === data.confirmPassword, {
     path: ['confirmPassword'],
-    message: 'Mật khẩu nhập lại không khớp',
+    message: 'Mật khẩu xác nhận không khớp với mật khẩu trên',
   });
 
 type RegisterFormData = z.infer<typeof registerSchema>;
@@ -55,6 +60,7 @@ export default function RegisterScreen({ navigation }: Props) {
   const [securePassword, setSecurePassword] = useState(true);
   const [secureConfirm, setSecureConfirm] = useState(true);
   const { register: registerUser, isLoading } = useAuthStore();
+  const { colors, isDark } = useTheme();
 
   const {
     control,
@@ -74,9 +80,11 @@ export default function RegisterScreen({ navigation }: Props) {
     await registerUser(data.fullName, data.email, data.password);
   };
 
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'bottom']}>
-      <StatusBar style="dark" />
+    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+      <StatusBar style={isDark ? 'light' : 'dark'} />
       <KeyboardAvoidingView
         style={styles.keyboardView}
         behavior={Platform.OS === 'ios' ? 'padding' : undefined}
@@ -84,20 +92,22 @@ export default function RegisterScreen({ navigation }: Props) {
         <ScrollView
           contentContainerStyle={styles.scrollContent}
           keyboardShouldPersistTaps="handled"
+          showsVerticalScrollIndicator={false}
         >
           <ScreenHeader
-            title="Tạo tài khoản"
-            subtitle="Đăng ký hồ sơ để bắt đầu lộ trình luyện tập"
+            title="Tạo tài khoản mới"
+            subtitle="Đăng ký hồ sơ để bắt đầu hành trình rèn luyện sức khỏe"
+            showThemeToggle
           />
 
-          <Card style={styles.formCard}>
+          <Card elevated style={styles.formCard}>
             <View style={styles.fieldsContainer}>
               <Controller
                 control={control}
                 name="fullName"
                 render={({ field: { onChange, onBlur, value } }) => (
                   <Input
-                    label="Họ và tên"
+                    label="Họ và tên của bạn"
                     placeholder="ví dụ: Nguyễn Văn An"
                     autoCapitalize="words"
                     leftIcon="person-outline"
@@ -114,7 +124,7 @@ export default function RegisterScreen({ navigation }: Props) {
                 name="email"
                 render={({ field: { onChange, onBlur, value } }) => (
                   <Input
-                    label="Email"
+                    label="Địa chỉ email"
                     placeholder="ví dụ: an.nguyen@fitlog.vn"
                     keyboardType="email-address"
                     autoCapitalize="none"
@@ -153,8 +163,8 @@ export default function RegisterScreen({ navigation }: Props) {
                 name="confirmPassword"
                 render={({ field: { onChange, onBlur, value } }) => (
                   <Input
-                    label="Nhập lại mật khẩu"
-                    placeholder="Nhập lại chính xác mật khẩu trên"
+                    label="Xác nhận mật khẩu"
+                    placeholder="Nhập lại mật khẩu"
                     secureTextEntry={secureConfirm}
                     autoCapitalize="none"
                     leftIcon="shield-checkmark-outline"
@@ -170,22 +180,23 @@ export default function RegisterScreen({ navigation }: Props) {
             </View>
 
             <Button
-              title={isLoading ? 'Đang tạo tài khoản...' : 'Tạo tài khoản'}
+              title="Đăng ký tài khoản"
               icon="checkmark-circle-outline"
               size="lg"
-              disabled={isLoading}
+              loading={isLoading}
               onPress={handleSubmit(onSubmit)}
             />
           </Card>
 
           <View style={styles.footerRow}>
-            <Text style={styles.footerText}>Đã có tài khoản?</Text>
+            <Text style={styles.footerText}>Bạn đã có tài khoản FitLog?</Text>
             <Pressable
               accessibilityRole="button"
+              accessibilityLabel="Quay lại trang đăng nhập"
               style={styles.linkButton}
               onPress={() => navigation.navigate('Login')}
             >
-              <Text style={styles.linkText}>Đăng nhập</Text>
+              <Text style={styles.linkText}>Đăng nhập ngay</Text>
             </Pressable>
           </View>
         </ScrollView>
@@ -194,44 +205,46 @@ export default function RegisterScreen({ navigation }: Props) {
   );
 }
 
-const styles = StyleSheet.create({
-  safe: {
-    flex: 1,
-    backgroundColor: colors.background,
-  },
-  keyboardView: {
-    flex: 1,
-  },
-  scrollContent: {
-    flexGrow: 1,
-    padding: layout.screenPadding,
-    gap: spacing.lg,
-    justifyContent: 'center',
-  },
-  formCard: {
-    gap: spacing.lg,
-  },
-  fieldsContainer: {
-    gap: spacing.md,
-  },
-  footerRow: {
-    flexDirection: 'row',
-    justifyContent: 'center',
-    alignItems: 'center',
-    gap: spacing.xs,
-  },
-  footerText: {
-    fontSize: fontSize.body,
-    color: colors.textMuted,
-  },
-  linkButton: {
-    minHeight: layout.minTouchSize,
-    justifyContent: 'center',
-    paddingHorizontal: spacing.xs,
-  },
-  linkText: {
-    fontSize: fontSize.body,
-    fontWeight: fontWeight.semibold,
-    color: colors.primary,
-  },
-});
+const createStyles = (colors: ThemeColors) =>
+  StyleSheet.create({
+    safe: {
+      flex: 1,
+      backgroundColor: colors.background,
+    },
+    keyboardView: {
+      flex: 1,
+    },
+    scrollContent: {
+      flexGrow: 1,
+      padding: layout.screenPadding,
+      gap: spacing.lg,
+      justifyContent: 'center',
+      paddingVertical: spacing.xl,
+    },
+    formCard: {
+      gap: spacing.lg,
+    },
+    fieldsContainer: {
+      gap: spacing.md,
+    },
+    footerRow: {
+      flexDirection: 'row',
+      justifyContent: 'center',
+      alignItems: 'center',
+      gap: spacing.xs,
+    },
+    footerText: {
+      fontSize: fontSize.body,
+      color: colors.textMuted,
+    },
+    linkButton: {
+      minHeight: layout.minTouchSize,
+      justifyContent: 'center',
+      paddingHorizontal: spacing.xs,
+    },
+    linkText: {
+      fontSize: fontSize.body,
+      fontWeight: fontWeight.bold,
+      color: colors.primary,
+    },
+  });
