@@ -41,16 +41,18 @@ const triggerHaptic = () => {
 
 let appearanceListenerAttached = false;
 
-export const useThemeStore = create<ThemeState>((set, get) => ({
-  themeMode: 'light',
-  isDark: false,
-  colors: lightPalette,
+export const useThemeStore = create<ThemeState>((set, get) => {
+  const sysDark = resolveIsDark('system');
+  return {
+    themeMode: 'system',
+    isDark: sysDark,
+    colors: sysDark ? darkPalette : lightPalette,
 
-  initTheme: async () => {
-    try {
-      const savedMode = (await AsyncStorage.getItem(STORAGE_KEY)) as ThemeMode | null;
-      const initialMode: ThemeMode = savedMode ?? 'light';
-      const isDark = resolveIsDark(initialMode);
+    initTheme: async () => {
+      try {
+        const savedMode = (await AsyncStorage.getItem(STORAGE_KEY)) as ThemeMode | null;
+        const initialMode: ThemeMode = savedMode ?? 'system';
+        const isDark = resolveIsDark(initialMode);
 
       set({
         themeMode: initialMode,
@@ -111,7 +113,8 @@ export const useThemeStore = create<ThemeState>((set, get) => ({
       // Bỏ qua lỗi lưu trữ cục bộ
     }
   },
-}));
+  };
+});
 
 /**
  * Hook tiện ích đồng bộ màu và trạng thái Theme toàn ứng dụng

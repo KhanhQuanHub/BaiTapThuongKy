@@ -1,7 +1,18 @@
+// ============================================================================
+// App.tsx
+// Điểm khởi đầu ứng dụng FitLog:
+// - Đảm bảo tải trước bộ font icon (@expo/vector-icons Ionicons) bằng useFonts
+//   trước khi hiển thị giao diện để tránh lỗi mất/cắt chữ icon trên Android.
+// - Đồng bộ chủ đề Sáng / Tối với NavigationContainer và SafeAreaProvider.
+// ============================================================================
+
 import { useEffect } from 'react';
+import { ActivityIndicator, StyleSheet, View } from 'react-native';
 import { SafeAreaProvider } from 'react-native-safe-area-context';
 import { DarkTheme, DefaultTheme, NavigationContainer } from '@react-navigation/native';
 import { StatusBar } from 'expo-status-bar';
+import { useFonts } from 'expo-font';
+import { Ionicons } from '@expo/vector-icons';
 
 import RootNavigator from './navigation/RootNavigator';
 import { useThemeStore } from './store/themeStore';
@@ -10,6 +21,11 @@ export default function App() {
   const isDark = useThemeStore((state) => state.isDark);
   const colors = useThemeStore((state) => state.colors);
   const initTheme = useThemeStore((state) => state.initTheme);
+
+  // Tải trước font Ionicons để đảm bảo mọi biểu tượng hiển thị đầy đủ ngay từ lần render đầu
+  const [fontsLoaded, fontError] = useFonts({
+    ...Ionicons.font,
+  });
 
   useEffect(() => {
     initTheme();
@@ -29,6 +45,14 @@ export default function App() {
     },
   };
 
+  if (!fontsLoaded && !fontError) {
+    return (
+      <View style={[styles.loadingWrap, { backgroundColor: colors.background }]}>
+        <ActivityIndicator size="large" color={colors.primary} />
+      </View>
+    );
+  }
+
   return (
     <SafeAreaProvider>
       <NavigationContainer theme={navigationTheme}>
@@ -38,3 +62,11 @@ export default function App() {
     </SafeAreaProvider>
   );
 }
+
+const styles = StyleSheet.create({
+  loadingWrap: {
+    flex: 1,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+});
