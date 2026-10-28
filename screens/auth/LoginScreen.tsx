@@ -1,11 +1,26 @@
-import { useMemo, useState } from 'react';
+// ============================================================================
+// screens/auth/LoginScreen.tsx
+// Màn hình Đăng nhập FitLog (đã khắc phục triệt để Uncaught ZodError):
+// - Sử dụng safeZodResolver(loginSchema) dùng safeParseAsync(), không bao giờ
+//   ném ZodError chưa bắt ra console.
+// - Lỗi từng trường hiện ngay dưới ô nhập bằng chữ đỏ tiếng Việt, viền đổi màu đỏ,
+//   chỉ báo sau khi rời ô (onBlur) hoặc bấm nút Đăng nhập, tự tắt khi sửa đúng.
+// - Banner lỗi từ máy chủ (sai thông tin, mất mạng, timeout, lỗi 5xx) đặt ngay
+//   phía trên nút gửi kèm nút "Thử lại".
+// ============================================================================
+
+import React, { ComponentRef, useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
+  ActivityIndicator,
+  Alert,
+  AppState,
   KeyboardAvoidingView,
   Platform,
   Pressable,
   ScrollView,
   StyleSheet,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
@@ -13,74 +28,133 @@ import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
 import { NativeStackScreenProps } from '@react-navigation/native-stack';
 import { Controller, useForm } from 'react-hook-form';
-import { zodResolver } from '@hookform/resolvers/zod';
-import { z } from 'zod';
 
-import Button from '../../components/ui/Button';
-import Card from '../../components/ui/Card';
 import Input from '../../components/ui/Input';
-import ThemeToggle from '../../components/ui/ThemeToggle';
 import {
   fontSize,
   fontWeight,
   layout,
   radius,
-  shadow,
   spacing,
   ThemeColors,
 } from '../../constants/theme';
+import {
+  LoginFormData,
+  loginSchema,
+  safeZodResolver,
+} from '../../domain/authSchema';
 import { RootStackParamList } from '../../navigation/RootNavigator';
 import { useAuthStore } from '../../store/authStore';
 import { useTheme } from '../../store/themeStore';
-
-const loginSchema = z.object({
-  email: z
-    .string()
-    .min(1, 'Vui lòng nhập địa chỉ email')
-    .email('Email không đúng định dạng (ví dụ: ten@fitlog.vn)'),
-  password: z
-    .string()
-    .min(6, 'Mật khẩu phải có tối thiểu 6 ký tự'),
-});
-
-type LoginFormData = z.infer<typeof loginSchema>;
 
 type Props = NativeStackScreenProps<RootStackParamList, 'Login'>;
 
 export default function LoginScreen({ navigation }: Props) {
   const [secureText, setSecureText] = useState(true);
-  const { login, isLoading } = useAuthStore();
+  const [isAppBackgrounded, setIsAppBackgrounded] = useState(false);
+
+  const passwordInputRef = useRef<ComponentRef<typeof TextInput>>(null);
+  const submitLockRef = useRef(false);
+
+  const {
+    login,
+    isLoading,
+    authError,
+    registrationSuccessMessage,
+    clearError,
+    clearRegistrationSuccess,
+  } = useAuthStore();
   const { colors, isDark } = useTheme();
 
   const {
     control,
     handleSubmit,
-    setValue,
-    formState: { errors },
+    getValues,
+    formState: { errors, isSubmitting },
   } = useForm<LoginFormData>({
-    resolver: zodResolver(loginSchema),
+    resolver: safeZodResolver<LoginFormData>(loginSchema),
+    // Chỉ kiểm tra khi rời ô (onBlur) hoặc khi bấm nút gửi; tự xóa lỗi ngay khi gõ sửa đúng
+    mode: 'onTouched',
+    reValidateMode: 'onChange',
     defaultValues: {
-      email: 'test@fitlog.vn',
-      password: '123456',
+      email: '',
+      password: '',
     },
   });
 
-  const fillDemoAccount = () => {
-    setValue('email', 'test@fitlog.vn', { shouldValidate: true });
-    setValue('password', '123456', { shouldValidate: true });
-  };
+  // Ẩn mật khẩu và che nội dung nhạy cảm khi ứng dụng chuyển sang nền / đa nhiệm
+  useEffect(() => {
+    const subscription = AppState.addEventListener('change', (nextState) => {
+      if (nextState !== 'active') {
+        setSecureText(true);
+        setIsAppBackgrounded(true);
+      } else {
+        setIsAppBackgrounded(false);
+      }
+    });
+    return () => {
+      subscription.remove();
+    };
+  }, []);
 
-  const onSubmit = async (data: LoginFormData) => {
-    await login(data.email, data.password);
-  };
+  useEffect(() => {
+    return () => {
+      clearError();
+    };
+  }, [clearError]);
 
-  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  // Hàm xử lý khi dữ liệu form đã hợp lệ (có try/catch/finally và khóa chống bấm lặp)
+  const onSubmit = useCallback(
+    async (data: LoginFormData) => {
+      if (submitLockRef.current || isLoading) {
+        return;
+      }
+      submitLockRef.current = true;
+      try {
+        const normalizedEmail = data.email.trim().toLowerCase();
+        await login(normalizedEmail, data.password);
+      } catch {
+        // Mọi lỗi đã được chuẩn hóa và lưu vào authError trong store
+      } finally {
+        submitLockRef.current = false;
+      }
+    },
+    [isLoading, login]
+  );
+
+  // Hàm kích hoạt gửi form an toàn, tuyệt đối không để Promise bị từ chối mà không bắt
+  const triggerSafeSubmit = useCallback(async () => {
+    try {
+      await handleSubmit(onSubmit)();
+    } catch {
+      // Không bao giờ ném lỗi chưa bắt ra console
+    }
+  }, [handleSubmit, onSubmit]);
+
+  const handleForgotPassword = useCallback(() => {
+    const currentEmail = getValues('email').trim().toLowerCase();
+    Alert.alert(
+      'Đặt lại mật khẩu',
+      currentEmail
+        ? `Hướng dẫn khôi phục mật khẩu sẽ được gửi tới ${currentEmail} nếu tài khoản tồn tại.`
+        : 'Vui lòng nhập địa chỉ email của bạn vào ô Email phía trên để nhận hướng dẫn đặt lại mật khẩu.',
+      [{ text: 'Đã hiểu', style: 'default' }]
+    );
+  }, [getValues]);
+
+  const busy = isLoading || isSubmitting;
+  const styles = useMemo(() => createStyles(colors), [colors]);
+
+  if (isAppBackgrounded) {
+    return <View style={[styles.safe, styles.privacyShield]} />;
+  }
 
   return (
-    <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
+    <SafeAreaView style={styles.safe} edges={['top', 'bottom', 'left', 'right']}>
       <StatusBar style={isDark ? 'light' : 'dark'} />
+
       <KeyboardAvoidingView
-        behavior={Platform.OS === 'ios' ? 'padding' : undefined}
+        behavior={Platform.OS === 'ios' ? 'padding' : 'height'}
         style={styles.keyboardView}
       >
         <ScrollView
@@ -88,113 +162,151 @@ export default function LoginScreen({ navigation }: Props) {
           keyboardShouldPersistTaps="handled"
           showsVerticalScrollIndicator={false}
         >
-          {/* Thanh trên cùng chứa nút Theme Switcher */}
-          <View style={styles.topBar}>
-            <View />
-            <ThemeToggle size="sm" />
-          </View>
-
-          {/* Logo & Tiêu đề ứng dụng */}
-          <View style={styles.brandHeader}>
-            <View style={styles.logoBadge}>
-              <Ionicons name="fitness" size={44} color={colors.primary} />
+          {/* ================= 1. LOGO NHỎ, TÊN FITLOG & KHẨU HIỆU NGẮN ================= */}
+          <View style={styles.brandSection}>
+            <View style={styles.logoCircle}>
+              <Ionicons name="fitness" size={28} color={colors.primary} />
             </View>
-            <Text style={styles.brandTitle}>FitLog</Text>
-            <Text style={styles.brandSubtitle}>
-              Quản lý luyện tập & sức khỏe cá nhân dễ dàng
+            <Text style={styles.brandName}>FitLog</Text>
+            <Text style={styles.brandTagline}>
+              Theo dõi luyện tập & sức khỏe mỗi ngày
             </Text>
           </View>
 
-          {/* Form đăng nhập */}
-          <Card elevated style={styles.formCard}>
-            <Text style={styles.formTitle}>Chào mừng bạn trở lại</Text>
-            <Text style={styles.formDesc}>Đăng nhập để tiếp tục lộ trình rèn luyện hôm nay</Text>
-
-            <View style={styles.fieldsContainer}>
-              <Controller
-                control={control}
-                name="email"
-                render={({ field: { onChange, onBlur, value } }) => (
-                  <Input
-                    label="Địa chỉ email"
-                    placeholder="ví dụ: ten@fitlog.vn"
-                    keyboardType="email-address"
-                    autoCapitalize="none"
-                    autoCorrect={false}
-                    leftIcon="mail-outline"
-                    value={value}
-                    onChangeText={onChange}
-                    onBlur={onBlur}
-                    error={errors.email?.message}
-                  />
-                )}
-              />
-
-              <Controller
-                control={control}
-                name="password"
-                render={({ field: { onChange, onBlur, value } }) => (
-                  <Input
-                    label="Mật khẩu"
-                    placeholder="Nhập mật khẩu (tối thiểu 6 ký tự)"
-                    secureTextEntry={secureText}
-                    autoCapitalize="none"
-                    leftIcon="lock-closed-outline"
-                    rightIcon={secureText ? 'eye-outline' : 'eye-off-outline'}
-                    onRightIconPress={() => setSecureText((prev) => !prev)}
-                    value={value}
-                    onChangeText={onChange}
-                    onBlur={onBlur}
-                    error={errors.password?.message}
-                  />
-                )}
-              />
+          {/* Thông báo khi vừa tạo tài khoản thành công */}
+          {registrationSuccessMessage ? (
+            <View style={styles.successBanner}>
+              <Ionicons name="checkmark-circle" size={20} color={colors.primary} />
+              <Text style={styles.successBannerText}>{registrationSuccessMessage}</Text>
             </View>
+          ) : null}
 
-            <Button
-              title="Đăng nhập ngay"
-              icon="log-in-outline"
-              size="lg"
-              loading={isLoading}
-              onPress={handleSubmit(onSubmit)}
+          {/* ================= 2. HAI Ô NHẬP LIỆU TRỰC TIẾP ================= */}
+          <View style={styles.formSection}>
+            <Controller
+              control={control}
+              name="email"
+              render={({ field: { onChange, onBlur, value } }) => (
+                <Input
+                  label="Email"
+                  placeholder="name@example.com"
+                  keyboardType="email-address"
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  spellCheck={false}
+                  autoComplete="email"
+                  textContentType="emailAddress"
+                  returnKeyType="next"
+                  blurOnSubmit={false}
+                  editable={!busy}
+                  value={value}
+                  onChangeText={(text) => {
+                    if (authError) clearError();
+                    if (registrationSuccessMessage) clearRegistrationSuccess();
+                    onChange(text);
+                  }}
+                  onBlur={onBlur}
+                  onSubmitEditing={() => passwordInputRef.current?.focus()}
+                  error={errors.email?.message}
+                />
+              )}
             />
-          </Card>
 
-          {/* Thẻ tài khoản thử nghiệm nhanh */}
-          <Card style={styles.demoCard}>
-            <View style={styles.demoHeader}>
-              <Ionicons name="flash-outline" size={18} color={colors.info} />
-              <Text style={styles.demoTitle}>Tài khoản thử nghiệm sẵn có</Text>
-            </View>
-            <View style={styles.demoContent}>
-              <View style={styles.demoRow}>
-                <Text style={styles.demoLabel}>Email:</Text>
-                <Text style={styles.demoValue}>test@fitlog.vn</Text>
-              </View>
-              <View style={styles.demoRow}>
-                <Text style={styles.demoLabel}>Mật khẩu:</Text>
-                <Text style={styles.demoValue}>123456</Text>
-              </View>
-            </View>
-            <Button
-              title="Điền sẵn tài khoản mẫu"
-              variant="secondary"
-              size="md"
-              icon="copy-outline"
-              onPress={fillDemoAccount}
+            <Controller
+              control={control}
+              name="password"
+              render={({ field: { onChange, onBlur, value } }) => (
+                <Input
+                  ref={passwordInputRef}
+                  label="Mật khẩu"
+                  placeholder="Nhập mật khẩu"
+                  secureTextEntry={secureText}
+                  autoCapitalize="none"
+                  autoCorrect={false}
+                  spellCheck={false}
+                  contextMenuHidden
+                  autoComplete="password"
+                  textContentType="password"
+                  returnKeyType="done"
+                  editable={!busy}
+                  rightIcon={secureText ? 'eye-outline' : 'eye-off-outline'}
+                  rightIconLabel={secureText ? 'Hiện mật khẩu' : 'Ẩn mật khẩu'}
+                  onRightIconPress={() => setSecureText((prev) => !prev)}
+                  value={value}
+                  onChangeText={(text) => {
+                    if (authError) clearError();
+                    onChange(text);
+                  }}
+                  onBlur={onBlur}
+                  onSubmitEditing={triggerSafeSubmit}
+                  error={errors.password?.message}
+                />
+              )}
             />
-          </Card>
 
-          {/* Liên kết điều hướng sang Đăng ký */}
-          <View style={styles.footerRow}>
-            <Text style={styles.footerText}>Chưa có tài khoản FitLog?</Text>
+            {/* Liên kết phụ 1: Quên mật khẩu? */}
+            <View style={styles.forgotRow}>
+              <Pressable
+                accessibilityRole="button"
+                style={styles.forgotBtn}
+                onPress={handleForgotPassword}
+                disabled={busy}
+              >
+                <Text style={styles.forgotText}>Quên mật khẩu?</Text>
+              </Pressable>
+            </View>
+
+            {/* ================= 3. BANNER LỖI TỪ MÁY CHỦ NẰM NGAY PHÍA TRÊN NÚT GỬI ================= */}
+            {authError ? (
+              <View style={styles.serverErrorBanner} accessibilityRole="alert">
+                <View style={styles.serverErrorRow}>
+                  <Ionicons name="alert-circle" size={20} color={colors.danger} />
+                  <Text style={styles.serverErrorText}>{authError.message}</Text>
+                </View>
+
+                {authError.retryable ? (
+                  <Pressable
+                    accessibilityRole="button"
+                    style={styles.retryBtn}
+                    onPress={triggerSafeSubmit}
+                    disabled={busy}
+                  >
+                    <Text style={styles.retryBtnText}>Thử lại</Text>
+                  </Pressable>
+                ) : null}
+              </View>
+            ) : null}
+
+            {/* ================= 4. NÚT HÀNH ĐỘNG CHÍNH DUY NHẤT ================= */}
             <Pressable
               accessibilityRole="button"
-              accessibilityLabel="Chuyển đến màn hình đăng ký tài khoản"
-              onPress={() => navigation.navigate('Register')}
-              style={styles.linkButton}
+              accessibilityState={{ disabled: busy, busy }}
+              style={[styles.submitBtn, busy && styles.submitBtnDisabled]}
+              onPress={triggerSafeSubmit}
+              disabled={busy}
             >
-              <Text style={styles.linkText}>Đăng ký ngay</Text>
+              {busy ? (
+                <ActivityIndicator size="small" color={colors.textOnPrimary} />
+              ) : (
+                <Text style={styles.submitBtnText}>Đăng nhập</Text>
+              )}
+            </Pressable>
+          </View>
+
+          {/* ================= 5. LIÊN KẾT QUA MÀN ĐĂNG KÝ ================= */}
+          <View style={styles.footerRow}>
+            <Text style={styles.footerText}>Chưa có tài khoản?</Text>
+            <Pressable
+              accessibilityRole="button"
+              style={styles.registerLinkBtn}
+              onPress={() => {
+                clearError();
+                clearRegistrationSuccess();
+                navigation.navigate('Register');
+              }}
+              disabled={busy}
+            >
+              <Text style={styles.registerLinkText}>Đăng ký</Text>
             </Pressable>
           </View>
         </ScrollView>
@@ -203,120 +315,146 @@ export default function LoginScreen({ navigation }: Props) {
   );
 }
 
-const createStyles = (colors: ThemeColors, isDark: boolean) =>
+const createStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     safe: {
       flex: 1,
+      backgroundColor: colors.background,
+    },
+    privacyShield: {
       backgroundColor: colors.background,
     },
     keyboardView: {
       flex: 1,
     },
     scrollContent: {
-      paddingHorizontal: layout.screenPadding,
-      gap: spacing.lg,
-      paddingBottom: spacing.xxl,
+      flexGrow: 1,
+      justifyContent: 'center',
+      paddingHorizontal: spacing.xl,
+      paddingVertical: spacing.xxl,
+      gap: spacing.xl,
     },
-    topBar: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
+    brandSection: {
       alignItems: 'center',
-      paddingTop: spacing.xs,
+      gap: 6,
     },
-    brandHeader: {
-      alignItems: 'center',
-      gap: spacing.xs / 2,
-    },
-    logoBadge: {
-      width: 84,
-      height: 84,
-      borderRadius: radius.pill,
-      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.15)' : colors.primaryLight,
+    logoCircle: {
+      width: 56,
+      height: 56,
+      borderRadius: radius.lg,
+      backgroundColor: colors.primaryLight,
       alignItems: 'center',
       justifyContent: 'center',
-      marginBottom: spacing.xs,
-      borderWidth: 2,
-      borderColor: colors.surface,
-      ...shadow.card,
+      marginBottom: 4,
     },
-    brandTitle: {
-      fontSize: fontSize.display - 14,
+    brandName: {
+      fontSize: fontSize.headline,
       fontWeight: fontWeight.heavy,
-      color: colors.primary,
-      letterSpacing: -0.5,
+      color: colors.text,
     },
-    brandSubtitle: {
-      fontSize: fontSize.body,
+    brandTagline: {
+      fontSize: fontSize.caption,
       color: colors.textMuted,
       textAlign: 'center',
     },
-    formCard: {
-      gap: spacing.md,
-    },
-    formTitle: {
-      fontSize: fontSize.title,
-      fontWeight: fontWeight.bold,
-      color: colors.text,
-      letterSpacing: -0.3,
-    },
-    formDesc: {
-      fontSize: fontSize.caption,
-      color: colors.textMuted,
-      marginTop: -spacing.xs / 2,
-    },
-    fieldsContainer: {
-      gap: spacing.md,
-      marginVertical: spacing.xs,
-    },
-    demoCard: {
-      gap: spacing.md,
-      backgroundColor: colors.surface,
-      borderColor: isDark ? '#334155' : colors.infoLight,
-      borderWidth: 1.5,
-    },
-    demoHeader: {
+    successBanner: {
       flexDirection: 'row',
       alignItems: 'center',
-      gap: spacing.xs,
+      gap: spacing.sm,
+      backgroundColor: colors.primaryLight,
+      borderWidth: 1,
+      borderColor: colors.primary,
+      borderRadius: radius.md,
+      padding: spacing.md,
     },
-    demoTitle: {
-      fontSize: fontSize.body,
-      fontWeight: fontWeight.bold,
-      color: colors.info,
-    },
-    demoContent: {
-      gap: spacing.xs,
-    },
-    demoRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-    demoLabel: {
+    successBannerText: {
+      flex: 1,
       fontSize: fontSize.caption,
-      color: colors.textMuted,
+      fontWeight: fontWeight.semibold,
+      color: colors.primary,
     },
-    demoValue: {
+    formSection: {
+      gap: spacing.md,
+    },
+    forgotRow: {
+      alignItems: 'flex-end',
+      marginTop: -spacing.xs,
+    },
+    forgotBtn: {
+      minHeight: layout.minTouchSize,
+      justifyContent: 'center',
+      paddingHorizontal: 4,
+    },
+    forgotText: {
+      fontSize: fontSize.caption,
+      fontWeight: fontWeight.semibold,
+      color: colors.primary,
+    },
+    serverErrorBanner: {
+      backgroundColor: colors.dangerLight,
+      borderWidth: 1,
+      borderColor: colors.danger,
+      borderRadius: radius.md,
+      padding: spacing.md,
+      gap: spacing.sm,
+    },
+    serverErrorRow: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.sm,
+    },
+    serverErrorText: {
+      flex: 1,
+      fontSize: fontSize.caption,
+      fontWeight: fontWeight.medium,
+      color: colors.danger,
+    },
+    retryBtn: {
+      alignSelf: 'flex-start',
+      minHeight: 38,
+      paddingHorizontal: spacing.md,
+      borderRadius: radius.sm,
+      backgroundColor: colors.danger,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    retryBtnText: {
+      fontSize: fontSize.caption,
+      fontWeight: fontWeight.bold,
+      color: '#FFFFFF',
+    },
+    submitBtn: {
+      minHeight: layout.buttonHeight,
+      backgroundColor: colors.primary,
+      borderRadius: radius.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: spacing.xs,
+    },
+    submitBtnDisabled: {
+      opacity: 0.65,
+    },
+    submitBtnText: {
       fontSize: fontSize.body,
       fontWeight: fontWeight.bold,
-      color: colors.text,
+      color: colors.textOnPrimary,
     },
     footerRow: {
       flexDirection: 'row',
       justifyContent: 'center',
       alignItems: 'center',
-      gap: spacing.xs,
+      gap: 4,
     },
     footerText: {
       fontSize: fontSize.body,
       color: colors.textMuted,
     },
-    linkButton: {
+    registerLinkBtn: {
       minHeight: layout.minTouchSize,
       justifyContent: 'center',
-      paddingHorizontal: spacing.xs,
+      paddingHorizontal: 6,
     },
-    linkText: {
+    registerLinkText: {
       fontSize: fontSize.body,
       fontWeight: fontWeight.bold,
       color: colors.primary,

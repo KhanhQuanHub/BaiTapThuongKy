@@ -1,3 +1,11 @@
+// ============================================================================
+// navigation/MainTabs.tsx
+// Thanh điều hướng 5 tab dưới đáy theo chuẩn Material 3 / iOS:
+// - 5 tab với nhãn ngắn gọn: Hôm nay, Lịch tập, Chạy bộ, Thống kê, Hồ sơ.
+// - Trạng thái đang chọn rõ ràng (nền pill nhẹ + icon đặc + màu xanh chủ đạo).
+// - Đảm bảo vùng chạm >= 44px, đồng bộ hoàn toàn Sáng / Tối.
+// ============================================================================
+
 import { createBottomTabNavigator } from '@react-navigation/bottom-tabs';
 import { StyleSheet, Text, View } from 'react-native';
 import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context';
@@ -5,9 +13,12 @@ import { Ionicons } from '@expo/vector-icons';
 
 import RunScreen from '../screens/RunScreen';
 import ProfileScreen from '../screens/ProfileScreen';
-import ThemeToggle from '../components/ui/ThemeToggle';
 import {
-  fontSize, fontWeight, layout, radius, shadow, spacing,
+  fontSize,
+  fontWeight,
+  layout,
+  radius,
+  spacing,
 } from '../constants/theme';
 import { useTheme } from '../store/themeStore';
 
@@ -35,43 +46,33 @@ const TAB_ICONS: Record<keyof MainTabParamList, TabIconConfig> = {
 };
 
 function TodayScreen() {
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
 
   return (
     <SafeAreaView
       style={[styles.placeholderContainer, { backgroundColor: colors.background }]}
       edges={['top', 'left', 'right']}
     >
-      <View style={styles.todayHeader}>
-        <View style={styles.todayTitleWrap}>
-          <Text style={[styles.placeholderText, { color: colors.text }]}>Hôm nay</Text>
-          <Text style={[styles.placeholderSub, { color: colors.textMuted }]}>
-            Kế hoạch rèn luyện thể lực và lịch trình trong ngày
-          </Text>
-        </View>
-        <ThemeToggle size="sm" />
-      </View>
+      <Text style={[styles.screenTitle, { color: colors.text }]}>Hôm nay</Text>
 
       <View
         style={[
-          styles.todayBanner,
+          styles.todayCard,
           {
-            backgroundColor: isDark ? '#1E293B' : '#DCFCE7',
-            borderColor: isDark ? '#334155' : '#86EFAC',
+            backgroundColor: colors.surface,
+            borderColor: colors.border,
           },
         ]}
       >
-        <Ionicons
-          name="fitness"
-          size={28}
-          color={colors.primary}
-        />
-        <View style={{ flex: 1 }}>
+        <View style={[styles.iconCircle, { backgroundColor: colors.primaryLight }]}>
+          <Ionicons name="fitness-outline" size={24} color={colors.primary} />
+        </View>
+        <View style={styles.todayTextCol}>
           <Text style={[styles.todayBannerTitle, { color: colors.text }]}>
-            Sẵn sàng bứt phá hôm nay!
+            Mục tiêu hôm nay: 5.0 km
           </Text>
           <Text style={[styles.todayBannerSub, { color: colors.textMuted }]}>
-            Mục tiêu chạy 5 km đang chờ bạn hoàn thành.
+            Chuyển sang tab Chạy bộ để bắt đầu buổi tập
           </Text>
         </View>
       </View>
@@ -86,9 +87,9 @@ function ScheduleScreen() {
       style={[styles.placeholderContainer, { backgroundColor: colors.background }]}
       edges={['top', 'left', 'right']}
     >
-      <Text style={[styles.placeholderText, { color: colors.text }]}>Lịch tập</Text>
+      <Text style={[styles.screenTitle, { color: colors.text }]}>Lịch tập</Text>
       <Text style={[styles.placeholderSub, { color: colors.textMuted }]}>
-        Lịch theo dõi buổi tập tuần & danh sách bài tập gợi ý
+        Lịch tập luyện trong tuần
       </Text>
     </SafeAreaView>
   );
@@ -101,9 +102,9 @@ function StatsScreen() {
       style={[styles.placeholderContainer, { backgroundColor: colors.background }]}
       edges={['top', 'left', 'right']}
     >
-      <Text style={[styles.placeholderText, { color: colors.text }]}>Thống kê</Text>
+      <Text style={[styles.screenTitle, { color: colors.text }]}>Thống kê</Text>
       <Text style={[styles.placeholderSub, { color: colors.textMuted }]}>
-        Biểu đồ tiến độ calo, quãng đường và chuỗi ngày rèn luyện
+        Tổng hợp quãng đường và năng lượng tiêu hao
       </Text>
     </SafeAreaView>
   );
@@ -111,7 +112,7 @@ function StatsScreen() {
 
 export default function MainTabs() {
   const insets = useSafeAreaInsets();
-  const { colors, isDark } = useTheme();
+  const { colors } = useTheme();
 
   return (
     <Tab.Navigator
@@ -122,27 +123,36 @@ export default function MainTabs() {
         tabBarInactiveTintColor: colors.textMuted,
         tabBarShowLabel: true,
         tabBarLabelStyle: {
-          fontSize: fontSize.micro + 1,
-          fontWeight: fontWeight.bold,
-          marginTop: -2,
+          fontSize: 12,
+          fontWeight: fontWeight.semibold,
+          marginTop: 2,
         },
         tabBarItemStyle: {
           minHeight: layout.minTouchSize,
-          paddingVertical: spacing.xs,
+          paddingVertical: 4,
         },
         tabBarStyle: {
           backgroundColor: colors.surface,
           borderTopColor: colors.border,
           borderTopWidth: 1,
-          height: layout.minTouchSize + spacing.sm + insets.bottom,
-          paddingBottom: insets.bottom > 0 ? insets.bottom : spacing.xs,
-          paddingTop: spacing.xs,
-          ...(isDark ? shadow.card : shadow.cardElevated),
+          height: 60 + insets.bottom,
+          paddingBottom: insets.bottom > 0 ? insets.bottom : 6,
+          paddingTop: 6,
+          elevation: 0,
         },
-        tabBarIcon: ({ focused, color, size }) => {
+        tabBarIcon: ({ focused, color }) => {
           const iconConfig = TAB_ICONS[route.name];
           const iconName = focused ? iconConfig.active : iconConfig.inactive;
-          return <Ionicons name={iconName} size={size ?? layout.iconSize} color={color} />;
+          return (
+            <View
+              style={[
+                styles.iconPill,
+                focused && { backgroundColor: colors.primaryLight },
+              ]}
+            >
+              <Ionicons name={iconName} size={20} color={color} />
+            </View>
+          );
         },
       })}
     >
@@ -179,38 +189,46 @@ const styles = StyleSheet.create({
   placeholderContainer: {
     flex: 1,
     padding: spacing.lg,
+    gap: spacing.md,
   },
-  todayHeader: {
-    flexDirection: 'row',
-    justifyContent: 'space-between',
-    alignItems: 'center',
-    marginBottom: spacing.xl,
-  },
-  todayTitleWrap: {
-    flex: 1,
-  },
-  placeholderText: {
-    fontSize: fontSize.headline,
-    fontWeight: fontWeight.heavy,
+  screenTitle: {
+    fontSize: fontSize.title,
+    fontWeight: fontWeight.bold,
   },
   placeholderSub: {
     fontSize: fontSize.body,
-    marginTop: 4,
   },
-  todayBanner: {
+  todayCard: {
     flexDirection: 'row',
     alignItems: 'center',
     gap: spacing.md,
     padding: spacing.lg,
-    borderRadius: radius.xl,
+    borderRadius: radius.lg,
     borderWidth: 1,
   },
+  iconCircle: {
+    width: 44,
+    height: 44,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
+  },
+  todayTextCol: {
+    flex: 1,
+    gap: 2,
+  },
   todayBannerTitle: {
-    fontSize: fontSize.subtitle,
+    fontSize: fontSize.body,
     fontWeight: fontWeight.bold,
   },
   todayBannerSub: {
     fontSize: fontSize.caption,
-    marginTop: 2,
+  },
+  iconPill: {
+    paddingHorizontal: 12,
+    paddingVertical: 3,
+    borderRadius: radius.pill,
+    alignItems: 'center',
+    justifyContent: 'center',
   },
 });

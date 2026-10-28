@@ -1,74 +1,76 @@
 // ============================================================================
-// FITLOG DESIGN SYSTEM THEME (Material Design 3 + iOS HIG Inspired)
-// Bộ thiết kế quy chuẩn cho toàn bộ ứng dụng FitLog.
-// KHÔNG ghi cứng mã màu, cỡ chữ, khoảng cách; mọi component đều tham chiếu tại đây.
+// constants/theme.ts
+// Hệ thống thiết kế tối giản chuẩn Material 3 & iOS HIG cho FitLog:
+// - Bảng màu giới hạn: 1 màu chủ đạo (Xanh lá), 1 màu cảnh báo (Cam/Đỏ), còn lại trung tính.
+// - Hỗ trợ đồng bộ Sáng (Light) và Tối (Dark) bằng cùng một hệ thống token.
+// - Chuẩn dễ đọc: Cỡ chữ tối thiểu 14sp, vùng chạm tối thiểu 44px, độ tương phản WCAG AA.
 // ============================================================================
 
 export const colors = {
-  // Thương hiệu chính: Xanh ngọc lục bảo (Emerald Green) biểu trưng cho sức sống, sức khỏe
+  // 1. Màu chủ đạo duy nhất: Xanh lá thể thao (Emerald Green)
   primary: '#16A34A',
   primaryDark: '#15803D',
   primaryLight: '#DCFCE7',
   primaryMuted: '#86EFAC',
-  primaryGlow: 'rgba(22, 163, 74, 0.18)',
+  primaryGlow: 'rgba(22, 163, 74, 0.14)',
 
-  // Điểm nhấn năng lượng & calo: Cam san hô (Coral Orange)
-  accent: '#F97316',
-  accentDark: '#C2410C',
-  accentLight: '#FFEDD5',
-  accentGlow: 'rgba(249, 115, 22, 0.18)',
+  // Đồng bộ các khóa màu phụ về màu chủ đạo/cảnh báo để tránh loạn màu nhấn
+  accent: '#D97706',
+  accentDark: '#B45309',
+  accentLight: '#FEF3C7',
+  accentGlow: 'rgba(217, 119, 6, 0.14)',
 
-  // Thông báo & Trạng thái (Đảm bảo độ tương phản WCAG AA >= 4.5:1)
-  info: '#0284C7',
-  infoLight: '#E0F2FE',
+  // 2. Màu cảnh báo & trạng thái
+  info: '#475569',
+  infoLight: '#F1F5F9',
   warning: '#D97706',
   warningLight: '#FEF3C7',
   danger: '#DC2626',
   dangerLight: '#FEE2E2',
 
-  // Nền & Bề mặt thị giác
-  background: '#F8FAFC', // Slate 50 dịu mắt
+  // 3. Hệ màu trung tính (Neutral Slate - Sáng)
+  background: '#F8FAFC',
   surface: '#FFFFFF',
-  surfaceAlt: '#F1F5F9', // Nền phụ cho thẻ con hoặc dải trạng thái
-  border: '#E2E8F0',     // Đường viền tinh tế
+  surfaceAlt: '#F1F5F9',
+  border: '#E2E8F0',
   borderFocus: '#16A34A',
 
-  // Hệ thống màu chữ & phân cấp thị giác
-  text: '#0F172A',         // Slate 900 sắc nét, dễ đọc dưới ánh sáng mạnh
-  textSecondary: '#334155', // Slate 700 cho nội dung bổ trợ
-  textMuted: '#64748B',     // Slate 500 cho nhãn chú thích, đơn vị đo
+  // Phân cấp chữ (Độ tương phản cao >= 4.5:1)
+  text: '#0F172A',
+  textSecondary: '#334155',
+  textMuted: '#64748B',
   textOnPrimary: '#FFFFFF',
 
-  // Lớp phủ nền mờ cho Modal / Bottom Sheet
-  overlay: 'rgba(15, 23, 42, 0.6)',
+  // Lớp phủ Modal
+  overlay: 'rgba(15, 23, 42, 0.55)',
 };
 
 export type ThemeColors = typeof colors;
 export type ThemeMode = 'light' | 'dark' | 'system';
 
-// Bảng màu hỗ trợ Chế độ tối (Dark Mode)
+// Bảng màu Chế độ Tối (Dark Mode) dùng chung hệ thống token
 export const darkColors: ThemeColors = {
   primary: '#22C55E',
   primaryDark: '#16A34A',
-  primaryLight: 'rgba(34, 197, 94, 0.15)',
+  primaryLight: 'rgba(34, 197, 94, 0.16)',
   primaryMuted: '#15803D',
-  primaryGlow: 'rgba(34, 197, 94, 0.25)',
+  primaryGlow: 'rgba(34, 197, 94, 0.22)',
 
-  accent: '#FB923C',
-  accentDark: '#EA580C',
-  accentLight: 'rgba(251, 146, 60, 0.15)',
-  accentGlow: 'rgba(251, 146, 60, 0.25)',
+  accent: '#F59E0B',
+  accentDark: '#D97706',
+  accentLight: 'rgba(245, 158, 11, 0.16)',
+  accentGlow: 'rgba(245, 158, 11, 0.22)',
 
-  info: '#38BDF8',
-  infoLight: 'rgba(56, 189, 248, 0.15)',
-  warning: '#FBBF24',
-  warningLight: 'rgba(251, 191, 36, 0.15)',
-  danger: '#F87171',
-  dangerLight: 'rgba(248, 113, 113, 0.15)',
+  info: '#94A3B8',
+  infoLight: 'rgba(148, 163, 184, 0.16)',
+  warning: '#F59E0B',
+  warningLight: 'rgba(245, 158, 11, 0.16)',
+  danger: '#EF4444',
+  dangerLight: 'rgba(239, 68, 68, 0.16)',
 
-  background: '#0B0F19',
+  background: '#0F172A',
   surface: '#1E293B',
-  surfaceAlt: '#0F172A',
+  surfaceAlt: '#0B1120',
   border: '#334155',
   borderFocus: '#22C55E',
 
@@ -77,10 +79,10 @@ export const darkColors: ThemeColors = {
   textMuted: '#94A3B8',
   textOnPrimary: '#FFFFFF',
 
-  overlay: 'rgba(0, 0, 0, 0.75)',
+  overlay: 'rgba(0, 0, 0, 0.72)',
 };
 
-// Thang khoảng cách theo quy chuẩn lưới 4/8pt
+// Khoảng cách theo lưới 4/8pt
 export const spacing = {
   xs: 4,
   sm: 8,
@@ -91,9 +93,9 @@ export const spacing = {
   xxxl: 40,
 };
 
-// Bán kính bo góc thân thiện, mềm mại
+// Bo góc nhất quán (chuẩn Material 3 / iOS)
 export const radius = {
-  xs: 4,
+  xs: 6,
   sm: 8,
   md: 12,
   lg: 16,
@@ -102,16 +104,16 @@ export const radius = {
   pill: 999,
 };
 
-// Thang cỡ chữ chuẩn bị cho khả năng co giãn (Dynamic Type)
+// Hệ thống cỡ chữ tối giản (tối thiểu 14sp để dễ đọc)
 export const fontSize = {
-  micro: 11,
-  caption: 13,
-  body: 15,
-  subtitle: 17,
-  title: 22,
-  headline: 28,
-  display: 48,      // Dành cho đồng hồ bấm giờ & quãng đường chính khi chạy
-  displayHero: 56,  // Dành cho số liệu toàn màn hình
+  micro: 14,       // Giữ tối thiểu 14sp theo chuẩn dễ đọc
+  caption: 14,     // Nhãn phụ, chú thích ngắn (14sp)
+  body: 16,        // Cỡ chữ nội dung chuẩn (16sp)
+  subtitle: 18,    // Tiêu đề phụ / chỉ số vừa (18sp)
+  title: 20,       // Cỡ chữ tiêu đề chuẩn (20sp)
+  headline: 28,    // Số liệu lớn phụ (28sp)
+  display: 44,     // Quãng đường / Bước chân lớn (44sp)
+  displayHero: 56, // Đồng hồ bấm giờ trung tâm (56sp)
 };
 
 export const fontWeight = {
@@ -122,45 +124,29 @@ export const fontWeight = {
   heavy: '800',
 } as const;
 
-// Hiệu ứng bóng đổ phân lớp chiều sâu theo Material 3 Elevation
+// Bóng đổ phẳng nhẹ (tối ưu cho máy yếu, ưu tiên viền mảnh 1px)
 export const shadow = {
   subtle: {
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.04,
-    shadowRadius: 4,
-    shadowOffset: { width: 0, height: 1 },
-    elevation: 1,
+    elevation: 0,
   },
   card: {
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.07,
-    shadowRadius: 10,
-    shadowOffset: { width: 0, height: 3 },
-    elevation: 3,
+    elevation: 0,
   },
   cardElevated: {
-    shadowColor: '#0F172A',
-    shadowOpacity: 0.12,
-    shadowRadius: 16,
-    shadowOffset: { width: 0, height: 6 },
-    elevation: 6,
+    elevation: 0,
   },
   glowPrimary: {
-    shadowColor: '#16A34A',
-    shadowOpacity: 0.28,
-    shadowRadius: 12,
-    shadowOffset: { width: 0, height: 4 },
-    elevation: 4,
+    elevation: 0,
   },
 };
 
-// Quy chuẩn bố cục chuẩn công thái học di động (Ergonomics)
+// Quy chuẩn công thái học di động
 export const layout = {
   screenPadding: 16,
-  cardPadding: 18,
-  buttonHeight: 50,
-  minTouchSize: 44, // Tiêu chuẩn tiếp cận tối thiểu (44x44 pt) của Apple & W3C
-  iconSize: 24,
-  iconSizeLarge: 32,
+  cardPadding: 16,
+  buttonHeight: 52,
+  minTouchSize: 44, // Vùng chạm tối thiểu 44x44px
+  iconSize: 22,
+  iconSizeLarge: 28,
   headerHeight: 56,
 };

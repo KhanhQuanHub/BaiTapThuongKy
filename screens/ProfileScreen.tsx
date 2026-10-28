@@ -1,74 +1,134 @@
-import { useMemo, useState } from 'react';
+// ============================================================================
+// screens/ProfileScreen.tsx
+// Màn hình Hồ sơ cá nhân tối giản theo chuẩn iOS Settings / Material 3:
+// - Chỉ giữ: Avatar, Tên, 3 chỉ số chính (Streak, Cân nặng, BMI) và danh sách
+//   cài đặt dạng hàng đơn giản.
+// - Chiều cao, sải chân, mục tiêu, lịch tập, bệnh nền được gom vào màn con
+//   "Chỉnh sửa hồ sơ".
+// - Chế độ Sáng / Tối / Tự động gộp thành một hàng chọn duy nhất.
+// - Bỏ toàn bộ đoạn mô tả dài và thẻ trùng lặp; chữ >= 14sp, vùng chạm >= 44px.
+// ============================================================================
+
+import React, { useMemo, useState } from 'react';
 import {
   Alert,
+  Modal,
   Pressable,
   ScrollView,
   StyleSheet,
   Switch,
   Text,
+  TextInput,
   View,
 } from 'react-native';
 import { SafeAreaView } from 'react-native-safe-area-context';
 import { StatusBar } from 'expo-status-bar';
 import { Ionicons } from '@expo/vector-icons';
-import { LinearGradient } from 'expo-linear-gradient';
 
-import Button from '../components/ui/Button';
-import Card from '../components/ui/Card';
-import ThemeSelectorCard from '../components/ui/ThemeSelectorCard';
-import ThemeToggle from '../components/ui/ThemeToggle';
 import {
   fontSize,
   fontWeight,
   layout,
   radius,
-  shadow,
   spacing,
   ThemeColors,
+  ThemeMode,
 } from '../constants/theme';
 import { calculateBmi } from '../domain/bmi';
 import { useAuthStore } from '../store/authStore';
 import { useTheme } from '../store/themeStore';
 
+const THEME_MODES: { mode: ThemeMode; label: string }[] = [
+  { mode: 'light', label: 'Sáng' },
+  { mode: 'dark', label: 'Tối' },
+  { mode: 'system', label: 'Tự động' },
+];
+
 export default function ProfileScreen() {
   const { user, logout } = useAuthStore();
-  const { colors, isDark } = useTheme();
+  const { colors, isDark, themeMode, setThemeMode } = useTheme();
   const [reminderEnabled, setReminderEnabled] = useState(true);
+  const [editModalVisible, setEditModalVisible] = useState(false);
 
-  // Dữ liệu người dùng mẫu mặc định nếu chưa đăng nhập qua form
-  const profile = {
-    fullName: user?.fullName ?? 'Nguyễn Văn Fit',
-    email: user?.email ?? 'nguyenvanfit@fitlog.vn',
+  // State lưu thông tin hồ sơ (khởi tạo từ authStore, giữ nguyên cấu trúc dữ liệu)
+  const [profileData, setProfileData] = useState({
+    fullName: user?.fullName ?? 'Nguyễn Khánh Quân',
+    email: user?.email ?? 'quan@figlog.vn',
     gender: user?.gender ?? 'Nam',
-    height: user?.height ?? 172,
-    weight: user?.weight ?? 66,
-    healthCondition: user?.healthCondition ?? 'Không có (Khỏe mạnh)',
+    height: user?.height ?? 175,
+    weight: user?.weight ?? 60,
+    healthCondition: user?.healthCondition ?? 'Không có',
     workoutsPerWeek: user?.workoutsPerWeek ?? 4,
-    currentGoal: user?.currentGoal ?? 'Giảm cân & Sức bền Cardio',
+    currentGoal: user?.currentGoal ?? 'Giảm cân & Sức bền',
+  });
+
+  // State tạm trong màn con "Chỉnh sửa hồ sơ"
+  const [draftHeight, setDraftHeight] = useState(String(profileData.height));
+  const [draftWeight, setDraftWeight] = useState(String(profileData.weight));
+  const [draftWorkouts, setDraftWorkouts] = useState(String(profileData.workoutsPerWeek));
+  const [draftGoal, setDraftGoal] = useState(profileData.currentGoal);
+  const [draftHealth, setDraftHealth] = useState(profileData.healthCondition);
+
+  // Tính BMI bằng hàm thuần hiện có
+  const bmiInfo = calculateBmi(profileData.weight, profileData.height, colors);
+
+  // Sải chân ước tính theo chiều cao (cm)
+  const strideFactor = profileData.gender === 'Nữ' ? 0.413 : 0.415;
+  const strideCm = Math.round(profileData.height * strideFactor * 10) / 10;
+
+  // Chữ cái đầu tên cho Avatar
+  const nameParts = profileData.fullName.trim().split(' ');
+  const initial =
+    nameParts.length > 0
+      ? nameParts[nameParts.length - 1].charAt(0).toUpperCase()
+      : 'F';
+
+  // Mở màn con "Chỉnh sửa hồ sơ"
+  const handleOpenEditModal = () => {
+    setDraftHeight(String(profileData.height));
+    setDraftWeight(String(profileData.weight));
+    setDraftWorkouts(String(profileData.workoutsPerWeek));
+    setDraftGoal(profileData.currentGoal);
+    setDraftHealth(profileData.healthCondition);
+    setEditModalVisible(true);
   };
 
-  // Tính BMI tự động bằng hàm thuần trong domain/bmi.ts
-  const bmiInfo = calculateBmi(profile.weight, profile.height, colors);
+  // Lưu thay đổi từ màn con "Chỉnh sửa hồ sơ"
+  const handleSaveProfile = () => {
+    const nextHeight = Math.min(230, Math.max(120, Number(draftHeight) || profileData.height));
+    const nextWeight = Math.min(200, Math.max(30, Number(draftWeight) || profileData.weight));
+    const nextWorkouts = Math.min(7, Math.max(1, Number(draftWorkouts) || profileData.workoutsPerWeek));
 
-  // Sải chân ước tính theo chiều cao (chuẩn FitLog: height * 0.415)
-  const strideCm = Math.round(profile.height * 0.415 * 10) / 10;
+    const updated = {
+      ...profileData,
+      height: nextHeight,
+      weight: nextWeight,
+      workoutsPerWeek: nextWorkouts,
+      currentGoal: draftGoal.trim() || profileData.currentGoal,
+      healthCondition: draftHealth.trim() || 'Không có',
+    };
 
-  // Ký tự viết tắt cho avatar tròn
-  const nameParts = profile.fullName.trim().split(' ');
-  const initial = nameParts.length > 0
-    ? nameParts[nameParts.length - 1].charAt(0).toUpperCase()
-    : 'F';
-
-  // Tính vị trí phần trăm con trỏ trên dải đo BMI (15 đến 35)
-  const bmiGaugePercent = Math.min(
-    Math.max(((bmiInfo.bmi - 15) / (35 - 15)) * 100, 5),
-    95
-  );
+    setProfileData(updated);
+    // Đồng bộ vào store hiện hành để màn Chạy bộ dùng chung chiều cao/cân nặng mới
+    if (user) {
+      useAuthStore.setState({
+        user: {
+          ...user,
+          height: updated.height,
+          weight: updated.weight,
+          workoutsPerWeek: updated.workoutsPerWeek,
+          currentGoal: updated.currentGoal,
+          healthCondition: updated.healthCondition,
+        },
+      });
+    }
+    setEditModalVisible(false);
+  };
 
   const handleLogoutPress = () => {
     Alert.alert(
-      'Đăng xuất khỏi FitLog?',
-      'Bạn có chắc chắn muốn kết thúc phiên đăng nhập trên thiết bị này?',
+      'Đăng xuất',
+      'Bạn muốn đăng xuất khỏi tài khoản này?',
       [
         { text: 'Hủy', style: 'cancel' },
         { text: 'Đăng xuất', style: 'destructive', onPress: () => logout() },
@@ -79,668 +139,513 @@ export default function ProfileScreen() {
 
   const showMedicalDisclaimer = () => {
     Alert.alert(
-      'Tuyên bố y tế FitLog',
-      'Ứng dụng FitLog hỗ trợ tự quản lý lịch tập và tính năng lượng tiêu hao theo công thức tham chiếu. Ứng dụng không chẩn đoán bệnh, không đưa ra phác đồ điều trị và không thay thế lời khuyên y khoa từ bác sĩ.'
+      'Thông tin y tế',
+      'FitLog hỗ trợ theo dõi vận động cá nhân theo công thức tham chiếu, không thay thế chẩn đoán hoặc tư vấn y khoa.'
     );
   };
 
-  const daysOfWeek = ['T2', 'T3', 'T4', 'T5', 'T6', 'T7', 'CN'];
-  const activeDaysCount = profile.workoutsPerWeek;
-
-  const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
+  const isBmiNormal = bmiInfo.bmi >= 18.5 && bmiInfo.bmi < 25;
+  const styles = useMemo(() => createStyles(colors), [colors]);
 
   return (
     <SafeAreaView style={styles.safe} edges={['top', 'left', 'right']}>
-      <StatusBar style="light" />
+      <StatusBar style={isDark ? 'light' : 'dark'} />
       <ScrollView
         contentContainerStyle={styles.scrollContent}
         showsVerticalScrollIndicator={false}
       >
-        {/* ================= HERO HEADER HIỆN ĐẠI ================= */}
-        <LinearGradient
-          colors={
-            isDark
-              ? ['#064e3b', '#0f766e']
-              : [colors.primaryDark, colors.primary]
-          }
-          start={{ x: 0, y: 0 }}
-          end={{ x: 1, y: 1 }}
-          style={styles.heroHeader}
-        >
-          {/* Hàng trên cùng: Tiêu đề & Cụm nút chuyển Theme + Chỉnh sửa */}
-          <View style={styles.heroTopRow}>
-            <Text style={styles.heroTitle}>Hồ sơ cá nhân</Text>
-            <View style={styles.heroActionsRow}>
-              {/* Nút chuyển đổi nhanh Light / Dark siêu mượt */}
-              <ThemeToggle size="sm" />
-              <Pressable
-                accessibilityRole="button"
-                accessibilityLabel="Chỉnh sửa hồ sơ cá nhân"
-                style={styles.editBtn}
-                onPress={() => Alert.alert('Thông báo', 'Tính năng chỉnh sửa hồ sơ chi tiết sẽ sớm ra mắt.')}
-              >
-                <Ionicons name="create-outline" size={20} color={colors.textOnPrimary} />
-              </Pressable>
-            </View>
+        {/* ================= 1. HEADER HỒ SƠ TỐI GIẢN ================= */}
+        <View style={styles.profileHeader}>
+          <View style={styles.avatarCircle}>
+            <Text style={styles.avatarInitial}>{initial}</Text>
           </View>
-
-          {/* Avatar & Thông tin tên người dùng */}
-          <View style={styles.heroUserSection}>
-            <View style={styles.avatarWrap}>
-              <View style={styles.avatarCircle}>
-                <Text style={styles.avatarInitial}>{initial}</Text>
-              </View>
-              <View style={styles.badgePro}>
-                <Ionicons name="sparkles" size={12} color="#FFFFFF" />
-              </View>
-            </View>
-
-            <View style={styles.heroMeta}>
-              <Text style={styles.userName}>{profile.fullName}</Text>
-              <Text style={styles.userEmail}>{profile.email}</Text>
-              <View style={styles.tierPill}>
-                <Text style={styles.tierPillText}>Hội viên FitLog Pro</Text>
-              </View>
-            </View>
-          </View>
-
-          {/* Thẻ vắn tắt 3 chỉ số nhanh trên nền Header */}
-          <View style={styles.heroStatsRow}>
-            <View style={styles.heroStatItem}>
-              <Text style={styles.heroStatNumber}>5</Text>
-              <Text style={styles.heroStatLabel}>Ngày streak</Text>
-            </View>
-            <View style={styles.heroStatDivider} />
-            <View style={styles.heroStatItem}>
-              <Text style={styles.heroStatNumber}>{profile.workoutsPerWeek}</Text>
-              <Text style={styles.heroStatLabel}>Buổi/tuần</Text>
-            </View>
-            <View style={styles.heroStatDivider} />
-            <View style={styles.heroStatItem}>
-              <Text style={styles.heroStatNumber}>{bmiInfo.bmi}</Text>
-              <Text style={styles.heroStatLabel}>Chỉ số BMI</Text>
-            </View>
-          </View>
-        </LinearGradient>
-
-        <View style={styles.bodyContent}>
-          {/* ================= THẺ BMI TỰ ĐỘNG THÔNG MINH ================= */}
-          <Card style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardTitleWrap}>
-                <Ionicons name="pulse" size={20} color={colors.primary} />
-                <Text style={styles.cardTitle}>Thể trạng & Chỉ số BMI</Text>
-              </View>
-              <View style={[styles.bmiStatusBadge, { backgroundColor: bmiInfo.bgColor }]}>
-                <Text style={[styles.bmiStatusText, { color: bmiInfo.color }]}>
-                  {bmiInfo.label}
-                </Text>
-              </View>
-            </View>
-
-            <View style={styles.bmiValueRow}>
-              <Text style={styles.bmiLargeNumber}>{bmiInfo.bmi}</Text>
-              <Text style={styles.bmiUnit}>kg/m²</Text>
-              <Text style={styles.bmiFormulaLabel}>(WHO Tiêu chuẩn Châu Á)</Text>
-            </View>
-
-            {/* Dải đo phân đoạn BMI */}
-            <View style={styles.gaugeTrackContainer}>
-              <View style={styles.gaugeTrack}>
-                <View style={[styles.gaugeSegment, { backgroundColor: colors.info, flex: 3.5 }]} />
-                <View style={[styles.gaugeSegment, { backgroundColor: colors.primary, flex: 6.5 }]} />
-                <View style={[styles.gaugeSegment, { backgroundColor: colors.accent, flex: 5 }]} />
-                <View style={[styles.gaugeSegment, { backgroundColor: colors.danger, flex: 5 }]} />
-              </View>
-
-              {/* Con trỏ định vị giá trị BMI hiện tại */}
-              <View style={[styles.gaugePointer, { left: `${bmiGaugePercent}%` }]}>
-                <View style={[styles.pointerPin, { borderColor: bmiInfo.color }]} />
-              </View>
-            </View>
-
-            {/* Nhãn 4 mốc phân loại */}
-            <View style={styles.gaugeLabelsRow}>
-              <Text style={styles.gaugeLabelText}>Gầy (&lt;18.5)</Text>
-              <Text style={styles.gaugeLabelText}>Chuẩn (18.5-24.9)</Text>
-              <Text style={styles.gaugeLabelText}>Thừa (25-29.9)</Text>
-              <Text style={styles.gaugeLabelText}>Béo (≥30)</Text>
-            </View>
-
-            {/* Lời khuyên sức khỏe */}
-            <View style={[styles.adviceBox, { backgroundColor: bmiInfo.bgColor }]}>
-              <Ionicons name="medkit-outline" size={18} color={bmiInfo.color} />
-              <Text style={[styles.adviceText, { color: bmiInfo.color }]}>
-                {bmiInfo.advice}
-              </Text>
-            </View>
-          </Card>
-
-          {/* ================= LƯỚI 3 CHỈ SỐ HÌNH THỂ ================= */}
-          <View style={styles.metricGrid}>
-            <Card style={styles.metricCard}>
-              <View style={[styles.metricIconWrap, { backgroundColor: colors.primaryLight }]}>
-                <Ionicons name="scale-outline" size={22} color={colors.primary} />
-              </View>
-              <Text style={styles.metricValue}>{profile.weight} kg</Text>
-              <Text style={styles.metricLabel}>Cân nặng</Text>
-            </Card>
-
-            <Card style={styles.metricCard}>
-              <View style={[styles.metricIconWrap, { backgroundColor: colors.accentLight }]}>
-                <Ionicons name="resize-outline" size={22} color={colors.accent} />
-              </View>
-              <Text style={styles.metricValue}>{profile.height} cm</Text>
-              <Text style={styles.metricLabel}>Chiều cao</Text>
-            </Card>
-
-            <Card style={styles.metricCard}>
-              <View style={[styles.metricIconWrap, { backgroundColor: colors.surfaceAlt }]}>
-                <Ionicons name="footsteps-outline" size={22} color={colors.info} />
-              </View>
-              <Text style={styles.metricValue}>{strideCm} cm</Text>
-              <Text style={styles.metricLabel}>Sải chân chạy</Text>
-            </Card>
-          </View>
-
-          {/* ================= MỤC TIÊU & LỊCH TRÌNH ================= */}
-          <Card style={styles.card}>
-            <View style={styles.cardHeader}>
-              <View style={styles.cardTitleWrap}>
-                <Ionicons name="flame" size={20} color={colors.accent} />
-                <Text style={styles.cardTitle}>Kế hoạch & Mục tiêu tập luyện</Text>
-              </View>
-            </View>
-
-            {/* Thẻ mục tiêu chính */}
-            <View style={styles.goalBanner}>
-              <View style={styles.goalIcon}>
-                <Ionicons name="trophy" size={24} color={colors.accent} />
-              </View>
-              <View style={styles.goalInfo}>
-                <Text style={styles.goalSubtitle}>Mục tiêu rèn luyện</Text>
-                <Text style={styles.goalTitle}>{profile.currentGoal}</Text>
-              </View>
-            </View>
-
-            {/* Tần suất tập luyện tuần */}
-            <View style={styles.scheduleRow}>
-              <View style={styles.scheduleHeader}>
-                <Text style={styles.scheduleLabel}>Lịch tập hàng tuần</Text>
-                <Text style={styles.scheduleValue}>{profile.workoutsPerWeek} buổi / tuần</Text>
-              </View>
-              <View style={styles.daysStrip}>
-                {daysOfWeek.map((day, idx) => {
-                  const isActive = idx < activeDaysCount;
-                  return (
-                    <View
-                      key={day}
-                      style={[
-                        styles.dayChip,
-                        isActive && styles.dayChipActive,
-                      ]}
-                    >
-                      <Text style={[styles.dayText, isActive && styles.dayTextActive]}>
-                        {day}
-                      </Text>
-                    </View>
-                  );
-                })}
-              </View>
-            </View>
-
-            {/* An toàn thể trạng & bệnh nền */}
-            <View style={styles.safetyBox}>
-              <Ionicons name="shield-checkmark" size={20} color={colors.primary} />
-              <View style={styles.safetyInfo}>
-                <Text style={styles.safetyTitle}>Tình trạng bệnh nền</Text>
-                <Text style={styles.safetyDesc}>{profile.healthCondition}</Text>
-              </View>
-            </View>
-          </Card>
-
-          {/* ================= GIAO DIỆN THEME LIGHT / DARK CAO CẤP ================= */}
-          <ThemeSelectorCard />
-
-          {/* ================= CÀI ĐẶT & TIỆN ÍCH ================= */}
-          <Card style={styles.card}>
-            <Text style={styles.cardTitle}>Cài đặt & Tiện ích</Text>
-
-            <View style={styles.settingItem}>
-              <View style={styles.settingLeft}>
-                <Ionicons name="notifications-outline" size={22} color={colors.primary} />
-                <View>
-                  <Text style={styles.settingTitle}>Nhắc nhở giờ tập hàng ngày</Text>
-                  <Text style={styles.settingDesc}>Nhận thông báo động viên vào 06:30 sáng</Text>
-                </View>
-              </View>
-              <Switch
-                value={reminderEnabled}
-                onValueChange={setReminderEnabled}
-                trackColor={{ false: colors.border, true: colors.primary }}
-                thumbColor={colors.surface}
-              />
-            </View>
-
-            <Pressable
-              accessibilityRole="button"
-              style={styles.settingItemPressable}
-              onPress={showMedicalDisclaimer}
-            >
-              <View style={styles.settingLeft}>
-                <Ionicons name="document-text-outline" size={22} color={colors.textMuted} />
-                <View>
-                  <Text style={styles.settingTitle}>Tuyên bố trách nhiệm y tế</Text>
-                  <Text style={styles.settingDesc}>Quy chuẩn an toàn sức khỏe cá nhân</Text>
-                </View>
-              </View>
-              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
-            </Pressable>
-          </Card>
-
-          {/* ================= NÚT ĐĂNG XUẤT ================= */}
-          <View style={styles.logoutSection}>
-            <Button
-              title="Đăng xuất khỏi FitLog"
-              variant="danger"
-              icon="log-out-outline"
-              size="lg"
-              onPress={handleLogoutPress}
-            />
+          <View style={styles.profileMeta}>
+            <Text style={styles.userName} numberOfLines={1}>
+              {profileData.fullName}
+            </Text>
+            <Text style={styles.userEmail} numberOfLines={1}>
+              {profileData.email}
+            </Text>
           </View>
         </View>
+
+        {/* ================= 2. BA CHỈ SỐ CHÍNH (STREAK, CÂN NẶNG, BMI) ================= */}
+        <View style={styles.statsCard}>
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>5 ngày</Text>
+            <Text style={styles.statLabel}>Streak</Text>
+          </View>
+
+          <View style={styles.statDivider} />
+
+          <View style={styles.statItem}>
+            <Text style={styles.statValue}>{profileData.weight} kg</Text>
+            <Text style={styles.statLabel}>Cân nặng</Text>
+          </View>
+
+          <View style={styles.statDivider} />
+
+          <View style={styles.statItem}>
+            <Text
+              style={[
+                styles.statValue,
+                { color: isBmiNormal ? colors.primary : colors.warning },
+              ]}
+            >
+              {bmiInfo.bmi}
+            </Text>
+            <Text style={styles.statLabel}>BMI ({bmiInfo.label})</Text>
+          </View>
+        </View>
+
+        {/* ================= 3. HÀNH ĐỘNG CHÍNH DUY NHẤT ================= */}
+        <Pressable
+          accessibilityRole="button"
+          style={styles.primaryActionBtn}
+          onPress={handleOpenEditModal}
+        >
+          <Ionicons name="create-outline" size={20} color={colors.textOnPrimary} />
+          <Text style={styles.primaryActionText}>Chỉnh sửa hồ sơ</Text>
+        </Pressable>
+
+        {/* ================= 4. DANH SÁCH CÀI ĐẶT DẠNG HÀNG (KIỂU iOS SETTINGS) ================= */}
+        <View style={styles.settingsGroup}>
+          {/* Hàng 1: Thông số cơ thể & mục tiêu (mở màn Chỉnh sửa hồ sơ) */}
+          <Pressable
+            accessibilityRole="button"
+            style={styles.settingRow}
+            onPress={handleOpenEditModal}
+          >
+            <View style={styles.rowLeft}>
+              <Ionicons name="body-outline" size={22} color={colors.primary} />
+              <Text style={styles.rowTitle}>Chỉ số & Mục tiêu</Text>
+            </View>
+            <View style={styles.rowRight}>
+              <Text style={styles.rowValueText}>
+                {profileData.height} cm • {strideCm} cm
+              </Text>
+              <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+            </View>
+          </Pressable>
+
+          <View style={styles.rowDivider} />
+
+          {/* Hàng 2: Giao diện Sáng / Tối / Tự động gộp trong 1 hàng duy nhất */}
+          <View style={styles.settingRow}>
+            <View style={styles.rowLeft}>
+              <Ionicons name="contrast-outline" size={22} color={colors.primary} />
+              <Text style={styles.rowTitle}>Giao diện</Text>
+            </View>
+
+            <View style={styles.segmentedControl}>
+              {THEME_MODES.map((item) => {
+                const selected = themeMode === item.mode;
+                return (
+                  <Pressable
+                    key={item.mode}
+                    accessibilityRole="radio"
+                    accessibilityState={{ selected }}
+                    style={[
+                      styles.segmentItem,
+                      selected && styles.segmentItemActive,
+                    ]}
+                    onPress={() => setThemeMode(item.mode)}
+                  >
+                    <Text
+                      style={[
+                        styles.segmentText,
+                        selected && styles.segmentTextActive,
+                      ]}
+                    >
+                      {item.label}
+                    </Text>
+                  </Pressable>
+                );
+              })}
+            </View>
+          </View>
+
+          <View style={styles.rowDivider} />
+
+          {/* Hàng 3: Nhắc nhở tập luyện */}
+          <View style={styles.settingRow}>
+            <View style={styles.rowLeft}>
+              <Ionicons name="notifications-outline" size={22} color={colors.primary} />
+              <Text style={styles.rowTitle}>Nhắc tập (06:30)</Text>
+            </View>
+            <Switch
+              value={reminderEnabled}
+              onValueChange={setReminderEnabled}
+              trackColor={{ false: colors.border, true: colors.primary }}
+              thumbColor="#FFFFFF"
+            />
+          </View>
+
+          <View style={styles.rowDivider} />
+
+          {/* Hàng 4: Thông tin y tế */}
+          <Pressable
+            accessibilityRole="button"
+            style={styles.settingRow}
+            onPress={showMedicalDisclaimer}
+          >
+            <View style={styles.rowLeft}>
+              <Ionicons name="shield-checkmark-outline" size={22} color={colors.textMuted} />
+              <Text style={styles.rowTitle}>Tuyên bố y tế</Text>
+            </View>
+            <Ionicons name="chevron-forward" size={18} color={colors.textMuted} />
+          </Pressable>
+
+          <View style={styles.rowDivider} />
+
+          {/* Hàng 5: Đăng xuất */}
+          <Pressable
+            accessibilityRole="button"
+            style={styles.settingRow}
+            onPress={handleLogoutPress}
+          >
+            <View style={styles.rowLeft}>
+              <Ionicons name="log-out-outline" size={22} color={colors.danger} />
+              <Text style={[styles.rowTitle, { color: colors.danger }]}>Đăng xuất</Text>
+            </View>
+          </Pressable>
+        </View>
       </ScrollView>
+
+      {/* ================= MÀN CON / MODAL CHỈNH SỬA HỒ SƠ ================= */}
+      <Modal
+        visible={editModalVisible}
+        transparent
+        animationType="none"
+        onRequestClose={() => setEditModalVisible(false)}
+      >
+        <View style={styles.modalBackdrop}>
+          <View style={styles.modalCard}>
+            <View style={styles.modalHeader}>
+              <Text style={styles.modalTitle}>Chỉnh sửa hồ sơ</Text>
+              <Pressable
+                style={styles.closeIconBtn}
+                onPress={() => setEditModalVisible(false)}
+              >
+                <Ionicons name="close" size={22} color={colors.textMuted} />
+              </Pressable>
+            </View>
+
+            <ScrollView showsVerticalScrollIndicator={false}>
+              <View style={styles.inputRowTwoCols}>
+                <View style={styles.inputCol}>
+                  <Text style={styles.inputLabel}>Chiều cao (cm)</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    keyboardType="numeric"
+                    value={draftHeight}
+                    onChangeText={setDraftHeight}
+                    placeholder="175"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                </View>
+
+                <View style={styles.inputCol}>
+                  <Text style={styles.inputLabel}>Cân nặng (kg)</Text>
+                  <TextInput
+                    style={styles.textInput}
+                    keyboardType="numeric"
+                    value={draftWeight}
+                    onChangeText={setDraftWeight}
+                    placeholder="60"
+                    placeholderTextColor={colors.textMuted}
+                  />
+                </View>
+              </View>
+
+              {/* Sải chân tự động tính từ chiều cao */}
+              <View style={styles.readonlyInfoRow}>
+                <Text style={styles.readonlyLabel}>Sải chân ước tính</Text>
+                <Text style={styles.readonlyValue}>
+                  {Math.round((Number(draftHeight) || profileData.height) * strideFactor * 10) / 10} cm
+                </Text>
+              </View>
+
+              <Text style={styles.inputLabel}>Số buổi tập / tuần</Text>
+              <TextInput
+                style={styles.textInput}
+                keyboardType="numeric"
+                value={draftWorkouts}
+                onChangeText={setDraftWorkouts}
+                placeholder="4"
+                placeholderTextColor={colors.textMuted}
+              />
+
+              <Text style={styles.inputLabel}>Mục tiêu tập luyện</Text>
+              <TextInput
+                style={styles.textInput}
+                value={draftGoal}
+                onChangeText={setDraftGoal}
+                placeholder="Giảm cân & Sức bền"
+                placeholderTextColor={colors.textMuted}
+              />
+
+              <Text style={styles.inputLabel}>Tình trạng bệnh nền</Text>
+              <TextInput
+                style={styles.textInput}
+                value={draftHealth}
+                onChangeText={setDraftHealth}
+                placeholder="Không có"
+                placeholderTextColor={colors.textMuted}
+              />
+
+              <Pressable style={styles.saveModalBtn} onPress={handleSaveProfile}>
+                <Text style={styles.saveModalBtnText}>Lưu hồ sơ</Text>
+              </Pressable>
+            </ScrollView>
+          </View>
+        </View>
+      </Modal>
     </SafeAreaView>
   );
 }
 
-const createStyles = (colors: ThemeColors, isDark: boolean) =>
+const createStyles = (colors: ThemeColors) =>
   StyleSheet.create({
     safe: {
       flex: 1,
-      backgroundColor: isDark ? '#064e3b' : colors.primaryDark,
-    },
-    scrollContent: {
       backgroundColor: colors.background,
     },
-    heroHeader: {
-      paddingHorizontal: layout.screenPadding,
-      paddingTop: spacing.lg,
+    scrollContent: {
+      padding: layout.screenPadding,
       paddingBottom: spacing.xxl,
-      borderBottomLeftRadius: radius.lg * 2,
-      borderBottomRightRadius: radius.lg * 2,
       gap: spacing.lg,
     },
-    heroTopRow: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-    heroActionsRow: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-    },
-    heroTitle: {
-      fontSize: fontSize.title,
-      fontWeight: fontWeight.bold,
-      color: colors.textOnPrimary,
-    },
-    editBtn: {
-      width: layout.minTouchSize,
-      height: layout.minTouchSize,
-      borderRadius: radius.pill,
-      backgroundColor: 'rgba(255, 255, 255, 0.2)',
-      alignItems: 'center',
-      justifyContent: 'center',
-    },
-    heroUserSection: {
+    profileHeader: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.md,
-    },
-    avatarWrap: {
-      position: 'relative',
+      paddingTop: spacing.xs,
     },
     avatarCircle: {
-      width: 76,
-      height: 76,
+      width: 60,
+      height: 60,
       borderRadius: radius.pill,
-      backgroundColor: colors.surface,
-      borderWidth: 3,
-      borderColor: 'rgba(255, 255, 255, 0.8)',
+      backgroundColor: colors.primaryLight,
+      borderWidth: 1,
+      borderColor: colors.primary,
       alignItems: 'center',
       justifyContent: 'center',
-      ...shadow.card,
     },
     avatarInitial: {
-      fontSize: fontSize.headline,
+      fontSize: 24,
       fontWeight: fontWeight.bold,
-      color: colors.primaryDark,
+      color: colors.primary,
     },
-    badgePro: {
-      position: 'absolute',
-      bottom: -2,
-      right: -2,
-      backgroundColor: colors.accent,
-      width: 22,
-      height: 22,
-      borderRadius: radius.pill,
-      alignItems: 'center',
-      justifyContent: 'center',
-      borderWidth: 2,
-      borderColor: colors.surface,
-    },
-    heroMeta: {
+    profileMeta: {
       flex: 1,
-      gap: spacing.xs / 2,
+      gap: 2,
     },
     userName: {
       fontSize: fontSize.title,
       fontWeight: fontWeight.bold,
-      color: colors.textOnPrimary,
+      color: colors.text,
     },
     userEmail: {
       fontSize: fontSize.caption,
-      color: 'rgba(255, 255, 255, 0.85)',
+      color: colors.textMuted,
     },
-    tierPill: {
-      alignSelf: 'flex-start',
-      backgroundColor: 'rgba(255, 255, 255, 0.22)',
-      paddingHorizontal: spacing.sm,
-      paddingVertical: spacing.xs / 2,
-      borderRadius: radius.pill,
-      marginTop: spacing.xs,
-    },
-    tierPillText: {
-      fontSize: fontSize.caption - 1,
-      fontWeight: fontWeight.semibold,
-      color: colors.textOnPrimary,
-    },
-    heroStatsRow: {
+    statsCard: {
       flexDirection: 'row',
       alignItems: 'center',
-      backgroundColor: 'rgba(255, 255, 255, 0.15)',
-      borderRadius: radius.md,
-      paddingVertical: spacing.md,
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      paddingVertical: spacing.lg,
     },
-    heroStatItem: {
+    statItem: {
       flex: 1,
       alignItems: 'center',
-      gap: spacing.xs / 2,
+      gap: 4,
     },
-    heroStatNumber: {
+    statValue: {
       fontSize: fontSize.subtitle,
-      fontWeight: fontWeight.bold,
-      color: colors.textOnPrimary,
-    },
-    heroStatLabel: {
-      fontSize: fontSize.caption - 1,
-      color: 'rgba(255, 255, 255, 0.8)',
-    },
-    heroStatDivider: {
-      width: 1,
-      height: 24,
-      backgroundColor: 'rgba(255, 255, 255, 0.25)',
-    },
-    bodyContent: {
-      padding: layout.screenPadding,
-      gap: spacing.lg,
-      marginTop: -spacing.md,
-    },
-    card: {
-      gap: spacing.md,
-    },
-    cardHeader: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      alignItems: 'center',
-    },
-    cardTitleWrap: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.xs,
-    },
-    cardTitle: {
-      fontSize: fontSize.subtitle,
-      fontWeight: fontWeight.bold,
-      color: colors.text,
-    },
-    bmiStatusBadge: {
-      paddingHorizontal: spacing.md,
-      paddingVertical: spacing.xs,
-      borderRadius: radius.pill,
-    },
-    bmiStatusText: {
-      fontSize: fontSize.caption,
-      fontWeight: fontWeight.bold,
-    },
-    bmiValueRow: {
-      flexDirection: 'row',
-      alignItems: 'baseline',
-      gap: spacing.xs,
-    },
-    bmiLargeNumber: {
-      fontSize: fontSize.headline + 4,
       fontWeight: fontWeight.bold,
       color: colors.text,
       fontVariant: ['tabular-nums'],
     },
-    bmiUnit: {
-      fontSize: fontSize.body,
-      color: colors.textMuted,
-      fontWeight: fontWeight.medium,
-    },
-    bmiFormulaLabel: {
+    statLabel: {
       fontSize: fontSize.caption,
       color: colors.textMuted,
-      marginLeft: spacing.sm,
     },
-    gaugeTrackContainer: {
-      position: 'relative',
-      height: 14,
-      justifyContent: 'center',
-      marginVertical: spacing.xs,
+    statDivider: {
+      width: 1,
+      height: 32,
+      backgroundColor: colors.border,
     },
-    gaugeTrack: {
+    primaryActionBtn: {
+      minHeight: layout.buttonHeight,
+      backgroundColor: colors.primary,
+      borderRadius: radius.lg,
       flexDirection: 'row',
-      height: 8,
-      borderRadius: radius.pill,
+      alignItems: 'center',
+      justifyContent: 'center',
+      gap: spacing.sm,
+    },
+    primaryActionText: {
+      fontSize: fontSize.body,
+      fontWeight: fontWeight.bold,
+      color: colors.textOnPrimary,
+    },
+    settingsGroup: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
       overflow: 'hidden',
     },
-    gaugeSegment: {
-      height: '100%',
-    },
-    gaugePointer: {
-      position: 'absolute',
-      marginLeft: -6,
-      top: 0,
-      bottom: 0,
-      justifyContent: 'center',
-      alignItems: 'center',
-    },
-    pointerPin: {
-      width: 14,
-      height: 14,
-      borderRadius: radius.pill,
-      backgroundColor: colors.surface,
-      borderWidth: 3,
-      ...shadow.card,
-    },
-    gaugeLabelsRow: {
+    settingRow: {
+      minHeight: 54,
       flexDirection: 'row',
+      alignItems: 'center',
       justifyContent: 'space-between',
-    },
-    gaugeLabelText: {
-      fontSize: fontSize.caption - 2,
-      color: colors.textMuted,
-    },
-    adviceBox: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.sm,
-      padding: spacing.md,
-      borderRadius: radius.md,
-    },
-    adviceText: {
-      flex: 1,
-      fontSize: fontSize.body - 1,
-      lineHeight: 20,
-      fontWeight: fontWeight.medium,
-    },
-    metricGrid: {
-      flexDirection: 'row',
+      paddingHorizontal: spacing.lg,
+      paddingVertical: spacing.sm,
       gap: spacing.sm,
     },
-    metricCard: {
-      flex: 1,
-      alignItems: 'center',
-      paddingVertical: spacing.lg,
-      paddingHorizontal: spacing.xs,
-      gap: spacing.xs,
-    },
-    metricIconWrap: {
-      width: 44,
-      height: 44,
-      borderRadius: radius.pill,
-      alignItems: 'center',
-      justifyContent: 'center',
-      marginBottom: spacing.xs,
-    },
-    metricValue: {
-      fontSize: fontSize.subtitle,
-      fontWeight: fontWeight.bold,
-      color: colors.text,
-    },
-    metricLabel: {
-      fontSize: fontSize.caption,
-      color: colors.textMuted,
-    },
-    goalBanner: {
+    rowLeft: {
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.md,
-      backgroundColor: isDark ? 'rgba(251, 146, 60, 0.15)' : colors.accentLight,
-      padding: spacing.md,
-      borderRadius: radius.md,
+      flexShrink: 1,
     },
-    goalIcon: {
-      width: 44,
-      height: 44,
-      borderRadius: radius.pill,
-      backgroundColor: colors.surface,
+    rowTitle: {
+      fontSize: fontSize.body,
+      fontWeight: fontWeight.medium,
+      color: colors.text,
+    },
+    rowRight: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+    },
+    rowValueText: {
+      fontSize: fontSize.caption,
+      color: colors.textMuted,
+    },
+    rowDivider: {
+      height: 1,
+      backgroundColor: colors.border,
+      marginLeft: spacing.lg + 22 + spacing.md,
+    },
+    segmentedControl: {
+      flexDirection: 'row',
+      backgroundColor: colors.surfaceAlt,
+      borderRadius: radius.md,
+      padding: 3,
+      borderWidth: 1,
+      borderColor: colors.border,
+    },
+    segmentItem: {
+      minHeight: 36,
+      paddingHorizontal: 10,
+      borderRadius: radius.sm,
       alignItems: 'center',
       justifyContent: 'center',
     },
-    goalInfo: {
-      flex: 1,
-      gap: spacing.xs / 2,
+    segmentItemActive: {
+      backgroundColor: colors.primary,
     },
-    goalSubtitle: {
+    segmentText: {
       fontSize: fontSize.caption,
-      color: colors.accent,
       fontWeight: fontWeight.medium,
+      color: colors.textMuted,
     },
-    goalTitle: {
-      fontSize: fontSize.subtitle,
+    segmentTextActive: {
+      color: colors.textOnPrimary,
+      fontWeight: fontWeight.bold,
+    },
+    modalBackdrop: {
+      flex: 1,
+      backgroundColor: colors.overlay,
+      justifyContent: 'center',
+      padding: layout.screenPadding,
+    },
+    modalCard: {
+      backgroundColor: colors.surface,
+      borderRadius: radius.lg,
+      borderWidth: 1,
+      borderColor: colors.border,
+      padding: spacing.lg,
+      maxHeight: '88%',
+    },
+    modalHeader: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
+      alignItems: 'center',
+      marginBottom: spacing.md,
+    },
+    modalTitle: {
+      fontSize: fontSize.title,
       fontWeight: fontWeight.bold,
       color: colors.text,
     },
-    scheduleRow: {
-      gap: spacing.sm,
+    closeIconBtn: {
+      width: layout.minTouchSize,
+      height: layout.minTouchSize,
+      alignItems: 'center',
+      justifyContent: 'center',
     },
-    scheduleHeader: {
+    inputRowTwoCols: {
       flexDirection: 'row',
-      justifyContent: 'space-between',
+      gap: spacing.md,
     },
-    scheduleLabel: {
-      fontSize: fontSize.body,
-      color: colors.textMuted,
-    },
-    scheduleValue: {
-      fontSize: fontSize.body,
-      fontWeight: fontWeight.semibold,
-      color: colors.text,
-    },
-    daysStrip: {
-      flexDirection: 'row',
-      justifyContent: 'space-between',
-      gap: spacing.xs,
-    },
-    dayChip: {
+    inputCol: {
       flex: 1,
-      aspectRatio: 1,
-      borderRadius: radius.sm,
+    },
+    inputLabel: {
+      fontSize: fontSize.caption,
+      fontWeight: fontWeight.semibold,
+      color: colors.textSecondary,
+      marginBottom: 6,
+      marginTop: spacing.sm,
+    },
+    textInput: {
+      minHeight: layout.minTouchSize,
       backgroundColor: colors.surfaceAlt,
       borderWidth: 1,
       borderColor: colors.border,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      fontSize: fontSize.body,
+      color: colors.text,
+    },
+    readonlyInfoRow: {
+      flexDirection: 'row',
+      justifyContent: 'space-between',
       alignItems: 'center',
-      justifyContent: 'center',
+      backgroundColor: colors.surfaceAlt,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+      marginTop: spacing.md,
     },
-    dayChipActive: {
-      backgroundColor: colors.primary,
-      borderColor: colors.primary,
-    },
-    dayText: {
+    readonlyLabel: {
       fontSize: fontSize.caption,
-      fontWeight: fontWeight.semibold,
       color: colors.textMuted,
     },
-    dayTextActive: {
-      color: colors.textOnPrimary,
-    },
-    safetyBox: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
-      backgroundColor: isDark ? 'rgba(34, 197, 94, 0.15)' : colors.primaryLight,
-      padding: spacing.md,
-      borderRadius: radius.md,
-    },
-    safetyInfo: {
-      flex: 1,
-      gap: spacing.xs / 2,
-    },
-    safetyTitle: {
-      fontSize: fontSize.caption,
+    readonlyValue: {
+      fontSize: fontSize.body,
       fontWeight: fontWeight.bold,
       color: colors.primary,
     },
-    safetyDesc: {
+    saveModalBtn: {
+      minHeight: layout.buttonHeight,
+      backgroundColor: colors.primary,
+      borderRadius: radius.lg,
+      alignItems: 'center',
+      justifyContent: 'center',
+      marginTop: spacing.xl,
+    },
+    saveModalBtnText: {
       fontSize: fontSize.body,
-      color: colors.primary,
-    },
-    settingItem: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingVertical: spacing.sm,
-    },
-    settingItemPressable: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      justifyContent: 'space-between',
-      paddingVertical: spacing.md,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
-    },
-    settingLeft: {
-      flexDirection: 'row',
-      alignItems: 'center',
-      gap: spacing.md,
-      flex: 1,
-    },
-    settingTitle: {
-      fontSize: fontSize.body,
-      fontWeight: fontWeight.medium,
-      color: colors.text,
-    },
-    settingDesc: {
-      fontSize: fontSize.caption,
-      color: colors.textMuted,
-    },
-    logoutSection: {
-      marginTop: spacing.xs,
-      marginBottom: spacing.xxl,
+      fontWeight: fontWeight.bold,
+      color: colors.textOnPrimary,
     },
   });

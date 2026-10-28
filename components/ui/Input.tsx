@@ -1,3 +1,13 @@
+// ============================================================================
+// components/ui/Input.tsx
+// Ô nhập liệu chuẩn công thái học (Material 3 / iOS):
+// - Nhãn nằm phía trên, placeholder gợi ý rõ ràng, nút mắt ẩn/hiện mật khẩu.
+// - Chuyển tiếp đầy đủ sự kiện onBlur / onFocus cho react-hook-form để chỉ báo lỗi
+//   sau khi người dùng rời ô (onBlur) hoặc nhấn nút gửi.
+// - Khi có lỗi: viền ô đổi sang màu báo lỗi (colors.danger) và hiển thị lỗi ngay bên dưới.
+// - Chữ tối thiểu 14sp, vùng chạm tối thiểu 44px.
+// ============================================================================
+
 import { ComponentRef, forwardRef, useState } from 'react';
 import {
   Pressable,
@@ -10,7 +20,11 @@ import {
 } from 'react-native';
 import { Ionicons } from '@expo/vector-icons';
 import {
-  fontSize, fontWeight, layout, radius, shadow, spacing,
+  fontSize,
+  fontWeight,
+  layout,
+  radius,
+  spacing,
 } from '../../constants/theme';
 import { useTheme } from '../../store/themeStore';
 
@@ -21,83 +35,100 @@ export type InputProps = TextInputProps & {
   leftIcon?: keyof typeof Ionicons.glyphMap;
   rightIcon?: keyof typeof Ionicons.glyphMap;
   onRightIconPress?: () => void;
+  rightIconLabel?: string;
   containerStyle?: ViewStyle;
 };
 
-const Input = forwardRef<ComponentRef<typeof TextInput>, InputProps>(({
-  label,
-  error,
-  hint,
-  leftIcon,
-  rightIcon,
-  onRightIconPress,
-  containerStyle,
-  secureTextEntry,
-  ...props
-}, ref) => {
-  const { colors } = useTheme();
-  const [isFocused, setIsFocused] = useState(false);
+const Input = forwardRef<ComponentRef<typeof TextInput>, InputProps>(
+  (
+    {
+      label,
+      error,
+      hint,
+      leftIcon,
+      rightIcon,
+      onRightIconPress,
+      rightIconLabel = 'Hiện hoặc ẩn mật khẩu',
+      containerStyle,
+      secureTextEntry,
+      onFocus,
+      onBlur,
+      ...props
+    },
+    ref
+  ) => {
+    const { colors } = useTheme();
+    const [isFocused, setIsFocused] = useState(false);
 
-  return (
-    <View style={[styles.wrapper, containerStyle]}>
-      {label ? <Text style={[styles.label, { color: colors.text }]}>{label}</Text> : null}
-      <View
-        style={[
-          styles.inputContainer,
-          {
-            backgroundColor: colors.surface,
-            borderColor: colors.border,
-          },
-          isFocused && { borderColor: colors.primary },
-          Boolean(error) && { borderColor: colors.danger },
-          isFocused && shadow.subtle,
-        ]}
-      >
-        {leftIcon ? (
-          <View style={styles.leftIconWrap}>
-            <Ionicons
-              name={leftIcon}
-              size={20}
-              color={error ? colors.danger : isFocused ? colors.primary : colors.textMuted}
-            />
+    return (
+      <View style={[styles.wrapper, containerStyle]}>
+        {label ? <Text style={[styles.label, { color: colors.text }]}>{label}</Text> : null}
+
+        <View
+          style={[
+            styles.inputContainer,
+            {
+              backgroundColor: colors.surface,
+              borderColor: error
+                ? colors.danger
+                : isFocused
+                  ? colors.primary
+                  : colors.border,
+            },
+          ]}
+        >
+          {leftIcon ? (
+            <View style={styles.leftIconWrap}>
+              <Ionicons
+                name={leftIcon}
+                size={20}
+                color={error ? colors.danger : isFocused ? colors.primary : colors.textMuted}
+              />
+            </View>
+          ) : null}
+
+          <TextInput
+            ref={ref}
+            style={[styles.textInput, { color: colors.text }]}
+            placeholderTextColor={colors.textMuted}
+            secureTextEntry={secureTextEntry}
+            accessibilityLabel={label}
+            {...props}
+            onFocus={(e) => {
+              setIsFocused(true);
+              onFocus?.(e);
+            }}
+            onBlur={(e) => {
+              setIsFocused(false);
+              onBlur?.(e);
+            }}
+          />
+
+          {rightIcon ? (
+            <Pressable
+              accessibilityRole="button"
+              accessibilityLabel={rightIconLabel}
+              style={styles.rightIconWrap}
+              onPress={onRightIconPress}
+              hitSlop={8}
+            >
+              <Ionicons name={rightIcon} size={20} color={colors.textMuted} />
+            </Pressable>
+          ) : null}
+        </View>
+
+        {error ? (
+          <View style={styles.errorRow}>
+            <Ionicons name="alert-circle" size={16} color={colors.danger} />
+            <Text style={[styles.errorText, { color: colors.danger }]}>{error}</Text>
           </View>
-        ) : null}
-
-        <TextInput
-          ref={ref}
-          style={[styles.textInput, { color: colors.text }]}
-          placeholderTextColor={colors.textMuted}
-          secureTextEntry={secureTextEntry}
-          onFocus={() => setIsFocused(true)}
-          onBlur={() => setIsFocused(false)}
-          accessibilityLabel={label}
-          {...props}
-        />
-
-        {rightIcon ? (
-          <Pressable
-            accessibilityRole="button"
-            accessibilityLabel="Nút chức năng nhập liệu"
-            style={styles.rightIconWrap}
-            onPress={onRightIconPress}
-            hitSlop={{ top: spacing.sm, bottom: spacing.sm, left: spacing.sm, right: spacing.sm }}
-          >
-            <Ionicons name={rightIcon} size={20} color={colors.textMuted} />
-          </Pressable>
+        ) : hint ? (
+          <Text style={[styles.hintText, { color: colors.textMuted }]}>{hint}</Text>
         ) : null}
       </View>
-
-      {error ? (
-        <View style={styles.errorRow}>
-          <Ionicons name="alert-circle" size={14} color={colors.danger} />
-          <Text style={[styles.errorText, { color: colors.danger }]}>{error}</Text>
-        </View>
-      ) : hint ? (
-        <Text style={[styles.hintText, { color: colors.textMuted }]}>{hint}</Text>
-      ) : null}
-    </View>
-  );
-});
+    );
+  }
+);
 
 Input.displayName = 'Input';
 
@@ -105,10 +136,10 @@ export default Input;
 
 const styles = StyleSheet.create({
   wrapper: {
-    gap: spacing.xs,
+    gap: 6,
   },
   label: {
-    fontSize: fontSize.body,
+    fontSize: fontSize.caption,
     fontWeight: fontWeight.semibold,
   },
   inputContainer: {
@@ -129,6 +160,7 @@ const styles = StyleSheet.create({
     minHeight: layout.minTouchSize,
     justifyContent: 'center',
     alignItems: 'center',
+    marginRight: -spacing.xs,
   },
   textInput: {
     flex: 1,
@@ -138,13 +170,14 @@ const styles = StyleSheet.create({
   errorRow: {
     flexDirection: 'row',
     alignItems: 'center',
-    gap: spacing.xs / 2,
+    gap: 6,
   },
   errorText: {
     fontSize: fontSize.caption,
     fontWeight: fontWeight.medium,
+    flex: 1,
   },
   hintText: {
-    fontSize: fontSize.caption - 1,
+    fontSize: fontSize.caption,
   },
 });

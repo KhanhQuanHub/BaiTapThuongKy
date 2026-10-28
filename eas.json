@@ -1,0 +1,34 @@
+{
+  "cli": {
+    "version": ">= 12.0.0",
+    "appVersionSource": "remote"
+  },
+  "build": {
+    "development": {
+      "developmentClient": true,
+      "distribution": "internal"
+    },
+    "preview": {
+      "distribution": "internal",
+      "android": {
+        "buildType": "apk"
+      },
+      "env": {
+        "EAS_BUILD_PROFILE": "preview",
+        "EXPO_PUBLIC_API_URL": "http://192.168.1.10:3000"
+      }
+    },
+    "production": {
+      "android": {
+        "buildType": "app-bundle"
+      },
+      "env": {
+        "EAS_BUILD_PROFILE": "production",
+        "EXPO_PUBLIC_API_URL": "https://api.figlog.vn"
+      }
+    }
+  },
+  "submit": {
+    "production": {}
+  }
+}
