@@ -4,7 +4,8 @@
     "private": true,
     "scripts": {
         "build-db": "node build-db.js",
-        "start": "node build-db.js && json-server --watch db.json --host 0.0.0.0 --port 3000 --middlewares ./auth.js"
+        "start": "json-server --watch db.json --host 0.0.0.0 --port 3000 --middlewares ./auth.js",
+        "reset": "node build-db.js && npm start"
     },
     "devDependencies": {
         "json-server": "0.17.4"

@@ -163,7 +163,12 @@ export async function request(path, options = {}) {
   }, options.timeoutMs || API_TIMEOUT_MS);
 
   try {
-    const token = await getAuthToken();
+    const isPublicAuthRequest =
+      options.skipAuth === true ||
+      path === '/login' ||
+      (path === '/users' && options.method === 'POST');
+
+    const token = isPublicAuthRequest ? null : await getAuthToken();
     const headers = {
       'Content-Type': 'application/json',
       ...(token ? { Authorization: `Bearer ${token}` } : {}),
@@ -291,8 +296,12 @@ export async function registerAccount(fullName, email, password, extraProfile = 
   const cleanEmail = String(email || '').trim().toLowerCase();
   const cleanName = String(fullName || '').trim();
 
+  // Xóa mọi token cũ còn sót lại trong bộ nhớ/SecureStore trước khi đăng ký tài khoản mới
+  await clearAuthToken();
+
   const created = await request('/users', {
     method: 'POST',
+    skipAuth: true,
     body: JSON.stringify({
       fullName: cleanName,
       email: cleanEmail,

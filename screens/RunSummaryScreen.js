@@ -484,10 +484,9 @@ const createStyles = (colors) =>
     },
     bottomBar: {
       paddingHorizontal: layout.screenPadding,
-      paddingVertical: spacing.md,
-      backgroundColor: colors.surface,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
+      paddingTop: spacing.md,
+      paddingBottom: spacing.lg,
+      backgroundColor: colors.background,
     },
     primaryButton: {
       minHeight: layout.buttonHeight,

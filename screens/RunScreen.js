@@ -1081,10 +1081,9 @@ const createStyles = (colors) =>
     },
     bottomBar: {
       paddingHorizontal: layout.screenPadding,
-      paddingVertical: spacing.md,
-      backgroundColor: colors.surface,
-      borderTopWidth: 1,
-      borderTopColor: colors.border,
+      paddingTop: spacing.md,
+      paddingBottom: spacing.lg, // Giữ khoảng cách 16px (>= 12px) tách biệt rõ với thanh TabBar
+      backgroundColor: colors.background,
     },
     primaryStartBtn: {
       minHeight: layout.buttonHeight,
