@@ -5,17 +5,25 @@
     "version": "1.0.0",
     "orientation": "portrait",
     "icon": "./assets/icon.png",
-    "userInterfaceStyle": "light",
+    "userInterfaceStyle": "automatic",
     "ios": {
       "supportsTablet": true,
       "infoPlist": {
         "NSMotionUsageDescription": "FitLog cần truy cập cảm biến bước chân (Pedometer) để đo quãng đường và tính lượng calo khi bạn chạy bộ.",
-        "NSLocalNetworkUsageDescription": "FitLog cần kết nối tới máy chủ json-server trong mạng nội bộ (LAN) để đồng bộ dữ liệu buổi chạy khi thử nghiệm."
+        "NSLocalNetworkUsageDescription": "FitLog cần kết nối tới máy chủ json-server trong mạng nội bộ (LAN) để đồng bộ dữ liệu buổi chạy khi thử nghiệm.",
+        "NSLocationWhenInUseUsageDescription": "FitLog cần vị trí của bạn để ghi lại lộ trình chạy bộ."
       }
     },
     "android": {
+      "package": "com.quan.fitlog",
+      "versionCode": 1,
+      "config": {
+        "googleMaps": { "apiKey": "KHÓA_CỦA_BẠN" }
+      },
       "permissions": [
-        "android.permission.ACTIVITY_RECOGNITION"
+        "android.permission.ACTIVITY_RECOGNITION",
+        "android.permission.ACCESS_FINE_LOCATION",
+        "android.permission.ACCESS_COARSE_LOCATION"
       ],
       "adaptiveIcon": {
         "backgroundColor": "#E6F4FE",
@@ -39,7 +47,27 @@
         {
           "motionPermission": "FitLog cần truy cập cảm biến bước chân (Pedometer) để đo quãng đường và tính lượng calo khi bạn chạy bộ."
         }
+      ],
+      [
+        "expo-location",
+        {
+          "locationWhenInUsePermission": "FitLog cần vị trí của bạn để ghi lại lộ trình chạy bộ."
+        }
+      ],
+      [
+        "expo-build-properties",
+        {
+          "android": {
+            "usesCleartextTraffic": true
+          }
+        }
       ]
-    ]
+    ],
+    "extra": {
+      "mapApiKey": "",
+      "eas": {
+        "projectId": "b531b8c5-8d5d-4dbb-b91c-af6bc5bf19a8"
+      }
+    }
   }
 }

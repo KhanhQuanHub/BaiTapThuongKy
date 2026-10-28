@@ -234,16 +234,58 @@ async function getCachedHistory() {
   }
 }
 
+/**
+ * Lấy khóa duy nhất của bản ghi buổi chạy (ưu tiên clientId, sau đó đến id).
+ * @param {object} run
+ * @returns {string}
+ */
+export function getRunUniqueKey(run) {
+  if (!run || typeof run !== 'object') return '';
+  if (run.clientId) return String(run.clientId);
+  if (run.id !== undefined && run.id !== null) return `id_${run.id}`;
+  return '';
+}
+
+/**
+ * Khử trùng lặp danh sách buổi chạy một cách tối ưu O(N).
+ * @param {Array<object>} baseList Danh sách ưu tiên cao
+ * @param {Array<object>} incomingList Danh sách mới cần gộp
+ * @returns {Array<object>}
+ */
+export function dedupeRuns(baseList = [], incomingList = []) {
+  const seen = new Set();
+  const result = [];
+
+  for (const item of baseList) {
+    if (!item) continue;
+    const key = getRunUniqueKey(item);
+    if (key && !seen.has(key)) {
+      seen.add(key);
+      result.push(item);
+    } else if (!key) {
+      result.push(item);
+    }
+  }
+
+  for (const item of incomingList) {
+    if (!item) continue;
+    const key = getRunUniqueKey(item);
+    if (key && !seen.has(key)) {
+      seen.add(key);
+      result.push(item);
+    } else if (!key) {
+      result.push(item);
+    }
+  }
+
+  return result;
+}
+
 async function prependToHistoryCache(savedRun) {
   if (!savedRun) return;
   try {
     const current = await getCachedHistory();
-    const filtered = current.filter(
-      (r) =>
-        (savedRun.clientId && r.clientId !== savedRun.clientId) &&
-        (savedRun.id === undefined || r.id !== savedRun.id)
-    );
-    const updated = [savedRun, ...filtered].slice(0, MAX_CACHED_HISTORY_ITEMS);
+    const updated = dedupeRuns([savedRun], current).slice(0, MAX_CACHED_HISTORY_ITEMS);
     await storageAdapter.setItem(STORAGE_KEYS.HISTORY_CACHE, JSON.stringify(updated));
   } catch {
     // Bỏ qua lỗi ghi bộ nhớ đệm
@@ -433,13 +475,8 @@ export async function fetchRunHistoryPage(page = 1, limit = 20) {
 
     let merged = validServerItems;
     if (safePage === 1 && queue.length > 0) {
-      const serverClientIds = new Set(
-        validServerItems.map((r) => r.clientId).filter(Boolean)
-      );
-      const pendingItems = queue
-        .filter((q) => !serverClientIds.has(q.clientId))
-        .map((q) => ({ ...q, _queued: true }));
-      merged = [...pendingItems, ...validServerItems];
+      const pendingItems = queue.map((q) => ({ ...q, _queued: true }));
+      merged = dedupeRuns(pendingItems, validServerItems);
     }
 
     return {
@@ -460,13 +497,11 @@ export async function fetchRunHistoryPage(page = 1, limit = 20) {
     }
 
     const cached = await getCachedHistory();
-    const cachedClientIds = new Set(cached.map((r) => r.clientId).filter(Boolean));
-    const pendingItems = queue
-      .filter((q) => !cachedClientIds.has(q.clientId))
-      .map((q) => ({ ...q, _queued: true }));
+    const pendingItems = queue.map((q) => ({ ...q, _queued: true }));
+    const fallbackList = dedupeRuns(pendingItems, cached).slice(0, safeLimit);
 
     return {
-      items: [...pendingItems, ...cached].slice(0, safeLimit),
+      items: fallbackList,
       hasMore: false,
       fromCache: true,
       queuedCount: queue.length,
