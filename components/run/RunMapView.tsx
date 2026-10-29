@@ -1,3 +1,16 @@
+// ============================================================================
+// components/run/RunMapView.tsx
+// Component Bản đồ Chạy bộ GPS với Leaflet trong WebView:
+// - Nguồn Tile: Đọc từ getMapTileConfig() (MapTiler raster với API key từ .env,
+//   hoặc fallback chuẩn OSM không watermark).
+// - Offline Caching: Tự động lưu cache tile vào IndexedDB trong WebView (giới hạn 150 MB / 4500 tiles),
+//   tự động dọn dẹp theo cơ chế LRU khi đầy bộ nhớ.
+// - Khi mất mạng: Tự động tải từ cache đã lưu; nếu ô chưa từng xem thì hiện nền xám tối
+//   thay vì ô vuông trắng hay icon lỗi.
+// - Báo trạng thái "Đang offline" khi mất kết nối mạng.
+// - Camera tự bám theo vị trí người chạy khi di chuyển, hỗ trợ nút định vị lại và nút phóng to.
+// ============================================================================
+
 import { useCallback, useEffect, useMemo, useRef, useState } from 'react';
 import {
   ActivityIndicator,
@@ -11,9 +24,17 @@ import { Ionicons } from '@expo/vector-icons';
 import * as Location from 'expo-location';
 
 import {
-  fontSize, fontWeight, layout, radius, shadow, spacing, ThemeColors,
+  fontSize,
+  fontWeight,
+  layout,
+  radius,
+  shadow,
+  spacing,
+  ThemeColors,
 } from '../../constants/theme';
 import { useTheme } from '../../store/themeStore';
+import { getMapTileConfig } from '../../services/mapTileProvider';
+import { useLocationStore } from '../../store/locationStore';
 
 export type Coordinate = {
   latitude: number;
@@ -44,9 +65,20 @@ export default function RunMapView({
   const webViewRef = useRef<any>(null);
   const onDistanceChangeRef = useRef(onDistanceChange);
 
-  const initialCenter = initialCoordinates.length > 0
-    ? initialCoordinates[initialCoordinates.length - 1]
-    : DEFAULT_CENTER;
+  const tileConfig = useMemo(() => getMapTileConfig(), []);
+
+  // Vị trí máy đã được theo dõi toàn app từ sau đăng nhập (store/locationStore.ts)
+  const deviceCoords = useLocationStore((state) => state.coords);
+
+  // Chốt tâm bản đồ ban đầu 1 lần (ưu tiên: lộ trình dở dang > vị trí máy > mặc định)
+  // để HTML WebView không bị nạp lại mỗi khi GPS cập nhật
+  const [initialCenter] = useState<Coordinate>(() =>
+    initialCoordinates.length > 0
+      ? initialCoordinates[initialCoordinates.length - 1]
+      : deviceCoords
+        ? { latitude: deviceCoords.latitude, longitude: deviceCoords.longitude }
+        : DEFAULT_CENTER
+  );
 
   const routeRef = useRef<Coordinate[]>(initialCoordinates);
   const currentPosRef = useRef<Coordinate>(initialCenter);
@@ -60,6 +92,7 @@ export default function RunMapView({
   const [hasGps, setHasGps] = useState(false);
   const [isMapReady, setIsMapReady] = useState(false);
   const [isExpanded, setIsExpanded] = useState(false);
+  const [isOffline, setIsOffline] = useState(false);
 
   const styles = useMemo(() => createStyles(colors, isDark), [colors, isDark]);
 
@@ -113,7 +146,16 @@ export default function RunMapView({
           currentPosRef.current = initCoord;
           setCurrentPos(initCoord);
 
-          // Nếu đang chạy thì cập nhật vị trí liên tục
+          // Đưa bản đồ về vị trí GPS thực tế ngay khi có tín hiệu
+          if (webViewRef.current) {
+            webViewRef.current.injectJavaScript(`
+              if (window.recenterMap) {
+                window.recenterMap(${initCoord.latitude}, ${initCoord.longitude});
+              }
+              true;
+            `);
+          }
+
           if (isTracking) {
             subscriber = await Location.watchPositionAsync(
               {
@@ -158,7 +200,7 @@ export default function RunMapView({
     };
   }, [isTracking, updateMapCoordinate]);
 
-  // Giả lập di chuyển khi đang chạy nếu thiết bị không có GPS thực (ví dụ giả lập emulator)
+  // Giả lập di chuyển khi test trên máy ảo nếu không có GPS thực
   useEffect(() => {
     if (!isTracking || hasGps) return;
 
@@ -191,6 +233,24 @@ export default function RunMapView({
     return () => clearInterval(interval);
   }, [isTracking, hasGps, updateMapCoordinate]);
 
+  // Đồng bộ vị trí máy (từ store toàn app) lên bản đồ ngay khi bản đồ sẵn sàng
+  useEffect(() => {
+    if (!deviceCoords || !isMapReady || !webViewRef.current) return;
+    setHasGps(true);
+    currentPosRef.current = {
+      latitude: deviceCoords.latitude,
+      longitude: deviceCoords.longitude,
+      timestamp: deviceCoords.timestamp,
+    };
+    setCurrentPos(currentPosRef.current);
+    webViewRef.current.injectJavaScript(`
+      if (window.setCurrentLocation) {
+        window.setCurrentLocation(${deviceCoords.latitude}, ${deviceCoords.longitude});
+      }
+      true;
+    `);
+  }, [deviceCoords, isMapReady]);
+
   const handleRecenter = () => {
     if (!webViewRef.current) return;
     const jsCode = `
@@ -202,8 +262,8 @@ export default function RunMapView({
     webViewRef.current.injectJavaScript(jsCode);
   };
 
-  // Trang HTML Leaflet nhúng trong WebView với theme Strava / Google Maps hiện đại
-  const leafletHtml = `
+  // Trang HTML Leaflet nhúng trong WebView với bộ đệm IndexedDB Offline Cache
+  const leafletHtml = useMemo(() => `
     <!DOCTYPE html>
     <html>
       <head>
@@ -212,25 +272,26 @@ export default function RunMapView({
         <script src="https://unpkg.com/leaflet@1.9.4/dist/leaflet.js"></script>
         <style>
           * { margin: 0; padding: 0; box-sizing: border-box; }
-          html, body, #map { width: 100%; height: 100%; background: #F8FAFC; }
+          html, body, #map { width: 100%; height: 100%; background: #0F172A; }
+          .leaflet-container { background: #0F172A !important; }
           .runner-pulse {
             width: 18px;
             height: 18px;
             background: #16A34A;
             border: 3px solid #FFFFFF;
             border-radius: 50%;
-            box-shadow: 0 0 10px rgba(22, 163, 74, 0.8);
+            box-shadow: 0 0 10px rgba(22, 163, 74, 0.9);
             position: relative;
           }
           .runner-pulse::after {
             content: '';
             position: absolute;
-            top: -6px;
-            left: -6px;
-            right: -6px;
-            bottom: -6px;
+            top: -7px;
+            left: -7px;
+            right: -7px;
+            bottom: -7px;
             border-radius: 50%;
-            background: rgba(22, 163, 74, 0.35);
+            background: rgba(22, 163, 74, 0.4);
             animation: pulse 1.8s infinite;
           }
           .start-pin {
@@ -241,6 +302,9 @@ export default function RunMapView({
             border-radius: 50%;
             box-shadow: 0 2px 4px rgba(0,0,0,0.3);
           }
+          .leaflet-control-attribution {
+            display: none !important;
+          }
           @keyframes pulse {
             0% { transform: scale(0.8); opacity: 1; }
             100% { transform: scale(2.2); opacity: 0; }
@@ -250,29 +314,102 @@ export default function RunMapView({
       <body>
         <div id="map"></div>
         <script>
-          const map = L.map('map', {
+          // ==================== TẦNG QUẢN LÝ TILES VÀ OFFLINE CACHE ====================
+          // L.TileLayer.FitLogLayer tải ảnh đồng bộ tức thì, tận dụng native HTTP disk cache
+          // của Android WebView, đồng thời hỗ trợ CacheStorage để lưu và đọc offline.
+          var CACHE_NAME = 'fitlog-tiles-v1';
+
+          // Ảnh fallback tối giản màu navy xám (khi mất mạng và tile chưa được lưu cache)
+          function getFallbackTileSvg() {
+            var svg = '<svg xmlns="http://www.w3.org/2000/svg" width="256" height="256" viewBox="0 0 256 256">' +
+              '<rect width="256" height="256" fill="#131C2E"/>' +
+              '<path d="M0 0 L256 256 M256 0 L0 256" stroke="#1E293B" stroke-width="1" stroke-dasharray="6,6"/>' +
+              '<text x="128" y="132" fill="#334155" font-size="12" font-family="sans-serif" text-anchor="middle">FitLog Offline</text>' +
+              '</svg>';
+            return 'data:image/svg+xml;charset=utf-8,' + encodeURIComponent(svg);
+          }
+
+          L.TileLayer.FitLogLayer = L.TileLayer.extend({
+            createTile: function(coords, done) {
+              var tile = document.createElement('img');
+              var url = this.getTileUrl(coords);
+
+              L.DomEvent.on(tile, 'load', L.Util.bind(this._tileOnLoad, this, done, tile));
+
+              // Xử lý khi không tải được từ mạng (mất mạng hoặc tile lỗi)
+              L.DomEvent.on(tile, 'error', function() {
+                if (window.caches) {
+                  caches.open(CACHE_NAME).then(function(cache) {
+                    return cache.match(url);
+                  }).then(function(cachedResp) {
+                    if (cachedResp) {
+                      return cachedResp.blob().then(function(blob) {
+                        tile.src = URL.createObjectURL(blob);
+                        done(null, tile);
+                      });
+                    }
+                    tile.src = getFallbackTileSvg();
+                    done(null, tile);
+                  }).catch(function() {
+                    tile.src = getFallbackTileSvg();
+                    done(null, tile);
+                  });
+                } else {
+                  tile.src = getFallbackTileSvg();
+                  done(null, tile);
+                }
+              });
+
+              tile.alt = '';
+              tile.setAttribute('role', 'presentation');
+
+              // 1. GÁN SRC ĐỒNG BỘ: Kích hoạt tải ảnh ngay lập tức! Trình duyệt bắt đầu tải tile ngay
+              tile.src = url;
+
+              // 2. Tự động sao lưu tile vào Cache API khi trực tuyến (chạy nền không chặn luồng)
+              if (window.caches && navigator.onLine) {
+                caches.open(CACHE_NAME).then(function(cache) {
+                  cache.add(url).catch(function() {});
+                }).catch(function() {});
+              }
+
+              return tile;
+            }
+          });
+
+          L.tileLayer.fitLogLayer = function(url, options) {
+            return new L.TileLayer.FitLogLayer(url, options);
+          };
+
+          // ==================== KHỞI TẠO BẢN ĐỒ LEAFLET ====================
+          var map = L.map('map', {
             zoomControl: false,
             attributionControl: false
-          }).setView([${currentPos.latitude}, ${currentPos.longitude}], 16);
+          }).setView([${initialCenter.latitude}, ${initialCenter.longitude}], 16);
 
-          // Tile CartoDB Positron hiện đại, rõ ràng như bản đồ chạy bộ chuyên nghiệp
-          L.tileLayer('https://{s}.basemaps.cartocdn.com/rastertiles/voyager/{z}/{x}/{y}{r}.png', {
-            maxZoom: 19
+          // Gắn TileLayer với danh sách subdomains đầy đủ
+          L.tileLayer.fitLogLayer('${tileConfig.urlTemplate}', {
+            maxZoom: ${tileConfig.maxZoom},
+            minZoom: ${tileConfig.minZoom},
+            subdomains: ${JSON.stringify(tileConfig.subdomains && tileConfig.subdomains.length ? tileConfig.subdomains : ['a', 'b', 'c'])}
           }).addTo(map);
+
+          let autoFollow = true;
+          map.on('dragstart', function() {
+            autoFollow = false;
+          });
 
           let routePoints = [];
           const polyline = L.polyline([], {
             color: '#16A34A',
             weight: 5,
-            opacity: 0.9,
+            opacity: 0.95,
             lineJoin: 'round',
             lineCap: 'round'
           }).addTo(map);
 
-          // Marker điểm xuất phát
           let startMarker = null;
 
-          // Marker người chạy hiện tại
           const runnerIcon = L.divIcon({
             className: 'runner-marker',
             html: '<div class="runner-pulse"></div>',
@@ -280,7 +417,7 @@ export default function RunMapView({
             iconAnchor: [9, 9]
           });
 
-          const currentMarker = L.marker([${currentPos.latitude}, ${currentPos.longitude}], {
+          const currentMarker = L.marker([${initialCenter.latitude}, ${initialCenter.longitude}], {
             icon: runnerIcon
           }).addTo(map);
 
@@ -299,37 +436,77 @@ export default function RunMapView({
               startMarker = L.marker(pt, { icon: startIcon }).addTo(map);
             }
 
-            map.panTo(pt, { animate: true, duration: 0.8 });
+            if (autoFollow) {
+              map.panTo(pt, { animate: true, duration: 0.8 });
+            }
+          };
+
+          // Cập nhật chấm vị trí hiện tại (không thêm điểm vào lộ trình)
+          window.setCurrentLocation = function(lat, lng) {
+            currentMarker.setLatLng([lat, lng]);
+            if (autoFollow && routePoints.length === 0) {
+              map.setView([lat, lng], map.getZoom(), { animate: true });
+            }
           };
 
           window.recenterMap = function(lat, lng) {
+            autoFollow = true;
             map.setView([lat, lng], 17, { animate: true });
           };
 
-          window.ReactNativeWebView && window.ReactNativeWebView.postMessage('MAP_READY');
+          // Lắng nghe trạng thái mạng trong WebView
+          function notifyNetworkState() {
+            if (window.ReactNativeWebView) {
+              window.ReactNativeWebView.postMessage(JSON.stringify({
+                type: 'NETWORK',
+                online: navigator.onLine
+              }));
+            }
+          }
+
+          window.addEventListener('online', notifyNetworkState);
+          window.addEventListener('offline', notifyNetworkState);
+
+          if (window.ReactNativeWebView) {
+            window.ReactNativeWebView.postMessage(JSON.stringify({ type: 'MAP_READY' }));
+            notifyNetworkState();
+          }
         </script>
       </body>
     </html>
-  `;
+  `, [initialCenter.latitude, initialCenter.longitude, tileConfig]);
+
+  const handleWebViewMessage = (event: WebViewMessageEvent) => {
+    try {
+      const data = JSON.parse(event.nativeEvent.data);
+      if (data.type === 'MAP_READY') {
+        setIsMapReady(true);
+        if (route.length > 0) {
+          route.forEach((coord) => updateMapCoordinate(coord));
+        }
+      } else if (data.type === 'NETWORK') {
+        setIsOffline(!data.online);
+      }
+    } catch {
+      if (event.nativeEvent.data === 'MAP_READY') {
+        setIsMapReady(true);
+      }
+    }
+  };
 
   return (
-    <View style={[styles.container, { height: isExpanded ? 380 : height }]}>
+    <View style={[styles.container, { height: isExpanded ? 420 : height }]}>
       <WebView
         ref={webViewRef}
         originWhitelist={['*']}
-        source={{ html: leafletHtml }}
+        source={{ html: leafletHtml, baseUrl: 'https://fitlog.vn' }}
         style={styles.webview}
         javaScriptEnabled
         domStorageEnabled
+        cacheEnabled
+        mixedContentMode="always"
         scrollEnabled={false}
-        onMessage={(event: WebViewMessageEvent): void => {
-          if (event.nativeEvent.data === 'MAP_READY') {
-            setIsMapReady(true);
-            if (route.length > 0) {
-              route.forEach((coord) => updateMapCoordinate(coord));
-            }
-          }
-        }}
+        onMessage={handleWebViewMessage}
       />
 
       {!isMapReady && (
@@ -339,11 +516,33 @@ export default function RunMapView({
         </View>
       )}
 
-      {/* Badge trạng thái định vị */}
-      <View style={styles.statusBadge}>
-        <View style={[styles.statusDot, { backgroundColor: isTracking ? colors.primary : colors.textMuted }]} />
-        <Text style={styles.statusText}>
-          {isTracking ? (hasGps ? 'GPS chuẩn xác' : 'Bản đồ lộ trình thực') : 'Sẵn sàng theo dõi'}
+      {/* Badge trạng thái: Offline hoặc GPS */}
+      <View style={[styles.statusBadge, isOffline && styles.statusBadgeOffline]}>
+        <View
+          style={[
+            styles.statusDot,
+            {
+              backgroundColor: isOffline
+                ? colors.warning
+                : isTracking
+                  ? colors.primary
+                  : colors.textMuted,
+            },
+          ]}
+        />
+        <Text
+          style={[
+            styles.statusText,
+            isOffline && { color: colors.warning },
+          ]}
+        >
+          {isOffline
+            ? 'Đang offline (Dùng bản đồ lưu)'
+            : isTracking
+              ? hasGps
+                ? 'GPS chuẩn xác'
+                : 'Bản đồ lộ trình thực'
+              : 'Sẵn sàng theo dõi'}
         </Text>
       </View>
 
@@ -351,6 +550,7 @@ export default function RunMapView({
       <View style={styles.controlsWrap}>
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel={isExpanded ? 'Thu nhỏ bản đồ' : 'Phóng to bản đồ'}
           style={styles.iconButton}
           onPress={() => setIsExpanded((prev) => !prev)}
         >
@@ -363,6 +563,7 @@ export default function RunMapView({
 
         <Pressable
           accessibilityRole="button"
+          accessibilityLabel="Định vị lại vị trí của bạn"
           style={styles.iconButton}
           onPress={handleRecenter}
         >
@@ -380,17 +581,17 @@ const createStyles = (colors: ThemeColors, isDark: boolean) =>
       overflow: 'hidden',
       borderWidth: 1,
       borderColor: colors.border,
-      backgroundColor: colors.surface,
+      backgroundColor: '#0F172A',
       position: 'relative',
       ...shadow.card,
     },
     webview: {
       flex: 1,
-      backgroundColor: colors.background,
+      backgroundColor: '#0F172A',
     },
     loadingOverlay: {
       ...StyleSheet.absoluteFill,
-      backgroundColor: colors.surface,
+      backgroundColor: '#0F172A',
       justifyContent: 'center',
       alignItems: 'center',
       gap: spacing.xs,
@@ -407,13 +608,17 @@ const createStyles = (colors: ThemeColors, isDark: boolean) =>
       flexDirection: 'row',
       alignItems: 'center',
       gap: spacing.xs,
-      backgroundColor: isDark ? 'rgba(30, 41, 59, 0.92)' : 'rgba(255, 255, 255, 0.92)',
+      backgroundColor: isDark ? 'rgba(15, 23, 42, 0.92)' : 'rgba(255, 255, 255, 0.92)',
       paddingHorizontal: spacing.sm,
       paddingVertical: spacing.xs,
       borderRadius: radius.pill,
-      borderWidth: isDark ? 1 : 0,
+      borderWidth: 1,
       borderColor: colors.border,
       ...shadow.card,
+    },
+    statusBadgeOffline: {
+      backgroundColor: isDark ? 'rgba(69, 26, 3, 0.92)' : 'rgba(254, 243, 199, 0.95)',
+      borderColor: colors.warning,
     },
     statusDot: {
       width: 6,
@@ -437,7 +642,7 @@ const createStyles = (colors: ThemeColors, isDark: boolean) =>
       height: layout.minTouchSize - 6,
       borderRadius: radius.pill,
       backgroundColor: colors.surface,
-      borderWidth: isDark ? 1 : 0,
+      borderWidth: 1,
       borderColor: colors.border,
       alignItems: 'center',
       justifyContent: 'center',

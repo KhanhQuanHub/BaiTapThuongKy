@@ -24,11 +24,11 @@ import {
   layout,
   radius,
   spacing,
-} from '../constants/theme';
-import { fetchRunHistoryPage, syncQueuedRuns } from '../services/runRepository';
-import { useTheme } from '../store/themeStore';
-import { formatPaceSec } from '../utils/runMath';
-import { formatDistance, formatDuration, formatInt } from '../utils/format';
+} from '../../constants/theme';
+import { dedupeRuns, fetchRunHistoryPage, syncQueuedRuns } from '../../services/runRepository';
+import { useTheme } from '../../store/themeStore';
+import { formatPaceSec } from '../../utils/runMath';
+import { formatDistance, formatDuration, formatInt } from '../../utils/format';
 
 const PAGE_LIMIT = 20;
 const MAX_STATE_ITEMS = 120;
@@ -155,11 +155,7 @@ export default function RunHistoryScreen({ onBack, onSelectRun }) {
         if (replace || pageToLoad === 1) {
           return result.items.slice(0, MAX_STATE_ITEMS);
         }
-        const existingKeys = new Set(prev.map((r) => r.clientId || `id_${r.id}`));
-        const appended = result.items.filter(
-          (r) => !existingKeys.has(r.clientId || `id_${r.id}`)
-        );
-        const combined = [...prev, ...appended];
+        const combined = dedupeRuns(prev, result.items);
         if (combined.length >= MAX_STATE_ITEMS) {
           hasMoreRef.current = false;
           return combined.slice(0, MAX_STATE_ITEMS);

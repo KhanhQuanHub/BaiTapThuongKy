@@ -31,6 +31,22 @@
       "role": "user",
       "createdAt": "2026-10-28T13:10:40.096Z",
       "id": 4
+    },
+    {
+      "email": "nguyenkhanhquan@gmail.com",
+      "password": "@KQuan231",
+      "fullName": "Quan Nguyenkhanh",
+      "role": "user",
+      "createdAt": "2026-10-28T14:19:41.685Z",
+      "id": 5
+    },
+    {
+      "email": "quan@gmail.com",
+      "password": "@KQuan231",
+      "fullName": "Quân",
+      "role": "user",
+      "createdAt": "2026-10-29T00:15:54.837Z",
+      "id": 6
     }
   ],
   "profiles": [
@@ -513,6 +529,62 @@
         }
       ],
       "note": "Đi bộ nhanh bảo vệ khớp"
+    },
+    {
+      "clientId": "r_1793197096088_8rek",
+      "date": "2026-10-28",
+      "startedAt": "2026-10-28T14:18:16.088Z",
+      "endedAt": "2026-10-28T14:25:01.183Z",
+      "source": "pedometer",
+      "steps": 114,
+      "strideM": 0.706,
+      "strideSource": "formula",
+      "distanceKm": 0.08,
+      "durationSec": 318,
+      "pausedSec": 86,
+      "avgSpeedKmh": 0.91,
+      "paceSecPerKm": 3975,
+      "cadenceSpm": 22,
+      "met": 3,
+      "weightKg": 60,
+      "calories": 16,
+      "splits": [
+        {
+          "km": 1,
+          "sec": 3975
+        }
+      ],
+      "note": "",
+      "userId": 5,
+      "id": 6
+    },
+    {
+      "clientId": "r_1793199598456_5z8a",
+      "date": "2026-10-28",
+      "startedAt": "2026-10-28T14:34:58.456Z",
+      "endedAt": "2026-10-28T14:59:58.456Z",
+      "source": "manual",
+      "steps": 4132,
+      "strideM": 0.706,
+      "strideSource": "formula",
+      "distanceKm": 2.92,
+      "durationSec": 1500,
+      "pausedSec": 0,
+      "avgSpeedKmh": 7.01,
+      "paceSecPerKm": 514,
+      "cadenceSpm": 165,
+      "met": 6.76,
+      "weightKg": 60,
+      "calories": 169,
+      "splits": [
+        {
+          "km": 1,
+          "sec": 514
+        }
+      ],
+      "note": "",
+      "userId": 5,
+      "id": 7
     }
   ]
 }

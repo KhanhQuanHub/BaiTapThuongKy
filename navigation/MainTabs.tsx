@@ -22,7 +22,7 @@ import { SafeAreaView, useSafeAreaInsets } from 'react-native-safe-area-context'
 import Svg, { Circle, Path, Rect } from 'react-native-svg';
 import { Ionicons } from '@expo/vector-icons';
 
-import RunScreen from '../screens/RunScreen';
+import RunScreen from '../screens/running/RunScreen';
 import ProfileScreen from '../screens/ProfileScreen';
 import {
   fontSize,

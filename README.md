@@ -2,6 +2,14 @@
 
 Ứng dụng di động giúp người dùng quản lý hồ sơ sức khỏe, lập kế hoạch tập luyện, theo dõi calo tiêu hao và ghi nhận quãng đường chạy bộ. Dữ liệu lưu cục bộ trên máy (offline-first), không cần tài khoản đám mây.
 
+# Xuất thành file apk
+`eas build --platform android --profile preview`
+
+# Chạy server
+`npm run server`
+# Chạy app
+`npm expo start -c`
+
 ---
 
 ## Chức năng chính

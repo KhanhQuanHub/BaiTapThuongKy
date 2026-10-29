@@ -31,12 +31,13 @@ import {
   layout,
   radius,
   spacing,
-} from '../constants/theme';
-import { useRunTracker } from '../hooks/useRunTracker';
-import { login as apiLogin } from '../services/api';
-import { useAuthStore } from '../store/authStore';
-import { useTheme } from '../store/themeStore';
-import { formatDistance, formatDuration, formatInt } from '../utils/format';
+} from '../../constants/theme';
+import { useRunTracker } from '../../hooks/useRunTracker';
+import { login as apiLogin } from '../../services/api';
+import { useAuthStore } from '../../store/authStore';
+import { useTheme } from '../../store/themeStore';
+import { formatDistance, formatDuration, formatInt } from '../../utils/format';
+import RunMapView from '../../components/run/RunMapView';
 import RunSummaryScreen from './RunSummaryScreen';
 
 // Lazy-load màn hình lịch sử để tối ưu bộ nhớ cho máy yếu
@@ -118,10 +119,15 @@ export default function RunScreen() {
 
   // Modal nhập tay buổi chạy (source = "manual")
   const [manualVisible, setManualVisible] = useState(false);
-  const [manualStepsInput, setManualStepsInput] = useState('4000');
+  const [manualMode, setManualMode] = useState('distance'); // 'distance' | 'steps'
+  const [manualDistanceKmInput, setManualDistanceKmInput] = useState('3.0');
+  const [manualStepsInput, setManualStepsInput] = useState('4130');
   const [manualMinutesInput, setManualMinutesInput] = useState('25');
   const [manualNoteInput, setManualNoteInput] = useState('');
   const [manualFeedback, setManualFeedback] = useState('');
+
+  // Trạng thái hiển thị bản đồ lộ trình GPS
+  const [showMap, setShowMap] = useState(true);
 
   // Modal đăng nhập lại khi gặp lỗi 401
   const [reloginVisible, setReloginVisible] = useState(false);
@@ -131,6 +137,32 @@ export default function RunScreen() {
   const [reloginLoading, setReloginLoading] = useState(false);
 
   const styles = useMemo(() => createStyles(colors), [colors]);
+
+  const handleDistanceInputChange = useCallback(
+    (text) => {
+      setManualDistanceKmInput(text);
+      const num = parseFloat(text.replace(',', '.'));
+      if (!isNaN(num) && num > 0) {
+        const stride = calibratedStrideM || 0.726;
+        const s = Math.round((num * 1000) / stride);
+        setManualStepsInput(String(s));
+      }
+    },
+    [calibratedStrideM]
+  );
+
+  const handleStepsInputChange = useCallback(
+    (text) => {
+      setManualStepsInput(text);
+      const num = parseInt(text, 10);
+      if (!isNaN(num) && num > 0) {
+        const stride = calibratedStrideM || 0.726;
+        const dist = ((num * stride) / 1000).toFixed(2);
+        setManualDistanceKmInput(String(dist));
+      }
+    },
+    [calibratedStrideM]
+  );
 
   const handleConfirmFinish = useCallback(async () => {
     setConfirmStopVisible(false);
@@ -158,8 +190,19 @@ export default function RunScreen() {
 
   const handleSaveManualRun = useCallback(async () => {
     setManualFeedback('');
+    let calculatedSteps = Number(manualStepsInput);
+    if (manualMode === 'distance') {
+      const dist = Number(manualDistanceKmInput.replace(',', '.'));
+      if (!Number.isFinite(dist) || dist <= 0) {
+        setManualFeedback('Vui lòng nhập quãng đường hợp lệ (lớn hơn 0 km).');
+        return;
+      }
+      const stride = calibratedStrideM || 0.726;
+      calculatedSteps = Math.round((dist * 1000) / stride);
+    }
+
     const res = await submitManualRun({
-      steps: Number(manualStepsInput),
+      steps: calculatedSteps,
       durationMin: Number(manualMinutesInput),
       note: manualNoteInput,
     });
@@ -169,7 +212,15 @@ export default function RunScreen() {
     }
     setManualVisible(false);
     setManualNoteInput('');
-  }, [manualMinutesInput, manualNoteInput, manualStepsInput, submitManualRun]);
+  }, [
+    calibratedStrideM,
+    manualDistanceKmInput,
+    manualMinutesInput,
+    manualMode,
+    manualNoteInput,
+    manualStepsInput,
+    submitManualRun,
+  ]);
 
   const handleReloginSubmit = useCallback(async () => {
     setReloginLoading(true);
@@ -374,9 +425,9 @@ export default function RunScreen() {
               onPress={
                 authExpired
                   ? () => {
-                      setReloginFeedback('');
-                      setReloginVisible(true);
-                    }
+                    setReloginFeedback('');
+                    setReloginVisible(true);
+                  }
                   : triggerManualSync
               }
             >
@@ -386,6 +437,35 @@ export default function RunScreen() {
             </Pressable>
           </View>
         ) : null}
+
+        {/* ================= BẢN ĐỒ LỘ TRÌNH GPS THẬT ================= */}
+        {showMap ? (
+          <View style={styles.mapSectionWrap}>
+            <View style={styles.mapSectionHeader}>
+              <View style={styles.mapHeaderLeft}>
+                <Ionicons name="map-outline" size={17} color={colors.primary} />
+                <Text style={styles.mapSectionTitle}>Bản đồ lộ trình GPS</Text>
+              </View>
+              <Pressable
+                accessibilityRole="button"
+                accessibilityLabel="Thu gọn bản đồ"
+                style={styles.toggleMapMiniBtn}
+                onPress={() => setShowMap(false)}
+              >
+                <Ionicons name="chevron-up-outline" size={18} color={colors.textMuted} />
+              </Pressable>
+            </View>
+            <RunMapView isTracking={isRunning} height={220} />
+          </View>
+        ) : (
+          <View style={styles.collapsedMapBar}>
+            <Pressable style={styles.showMapBtn} onPress={() => setShowMap(true)}>
+              <Ionicons name="map-outline" size={18} color={colors.primary} />
+              <Text style={styles.showMapBtnText}>Hiện bản đồ lộ trình GPS</Text>
+              <Ionicons name="chevron-down-outline" size={18} color={colors.textMuted} />
+            </Pressable>
+          </View>
+        )}
 
         {/* ================= KHỐI TRUNG TÂM: THỜI GIAN, QUÃNG ĐƯỜNG, BƯỚC CHÂN ================= */}
         <View style={styles.heroCard}>
@@ -564,7 +644,7 @@ export default function RunScreen() {
               }}
             >
               <Ionicons name="create-outline" size={22} color={colors.primary} />
-              <Text style={styles.menuRowText}>Nhập tay buổi chạy</Text>
+              <Text style={styles.menuRowText}>Nhập quãng đường thủ công</Text>
             </Pressable>
 
             <View style={styles.menuDivider} />
@@ -595,13 +675,6 @@ export default function RunScreen() {
             >
               <Ionicons name="hardware-chip-outline" size={22} color={colors.primary} />
               <Text style={styles.menuRowText}>Kiểm tra cảm biến</Text>
-            </Pressable>
-
-            <View style={styles.menuDivider} />
-
-            <Pressable style={styles.menuRow} onPress={handleOpenHistory}>
-              <Ionicons name="time-outline" size={22} color={colors.primary} />
-              <Text style={styles.menuRowText}>Lịch sử buổi chạy</Text>
             </Pressable>
           </View>
         </Pressable>
@@ -713,7 +786,7 @@ export default function RunScreen() {
         </View>
       </Modal>
 
-      {/* ================= MODAL NHẬP TAY BUỔI CHẠY ================= */}
+      {/* ================= MODAL NHẬP QUÃNG ĐƯỜNG / BƯỚC CHÂN ================= */}
       <Modal
         visible={manualVisible}
         transparent
@@ -722,17 +795,77 @@ export default function RunScreen() {
       >
         <View style={styles.modalBackdrop}>
           <View style={styles.modalCard}>
-            <Text style={styles.modalTitle}>Nhập tay buổi chạy</Text>
+            <Text style={styles.modalTitle}>Nhập quãng đường buổi chạy</Text>
 
-            <Text style={styles.inputLabel}>Số bước chân</Text>
-            <TextInput
-              style={styles.textInput}
-              keyboardType="numeric"
-              value={manualStepsInput}
-              onChangeText={setManualStepsInput}
-              placeholder="4000"
-              placeholderTextColor={colors.textMuted}
-            />
+            {/* Bộ chọn chế độ: Quãng đường (km) hoặc Số bước */}
+            <View style={styles.modeSwitchRow}>
+              <Pressable
+                style={[
+                  styles.modeSwitchBtn,
+                  manualMode === 'distance' && styles.modeSwitchBtnActive,
+                ]}
+                onPress={() => setManualMode('distance')}
+              >
+                <Text
+                  style={[
+                    styles.modeSwitchText,
+                    manualMode === 'distance' && styles.modeSwitchTextActive,
+                  ]}
+                >
+                  Theo Quãng đường (km)
+                </Text>
+              </Pressable>
+              <Pressable
+                style={[
+                  styles.modeSwitchBtn,
+                  manualMode === 'steps' && styles.modeSwitchBtnActive,
+                ]}
+                onPress={() => setManualMode('steps')}
+              >
+                <Text
+                  style={[
+                    styles.modeSwitchText,
+                    manualMode === 'steps' && styles.modeSwitchTextActive,
+                  ]}
+                >
+                  Theo Bước chân
+                </Text>
+              </Pressable>
+            </View>
+
+            {manualMode === 'distance' ? (
+              <>
+                <Text style={styles.inputLabel}>Quãng đường (km)</Text>
+                <TextInput
+                  style={styles.textInput}
+                  keyboardType="decimal-pad"
+                  value={manualDistanceKmInput}
+                  onChangeText={handleDistanceInputChange}
+                  placeholder="Ví dụ: 3.5"
+                  placeholderTextColor={colors.textMuted}
+                />
+                <Text style={styles.manualConversionHint}>
+                  Tương đương ~{formatInt(Number(manualStepsInput) || 0)} bước chân (theo sải chân{' '}
+                  {(calibratedStrideM || 0.726).toFixed(3)} m)
+                </Text>
+              </>
+            ) : (
+              <>
+                <Text style={styles.inputLabel}>Số bước chân</Text>
+                <TextInput
+                  style={styles.textInput}
+                  keyboardType="numeric"
+                  value={manualStepsInput}
+                  onChangeText={handleStepsInputChange}
+                  placeholder="Ví dụ: 4000"
+                  placeholderTextColor={colors.textMuted}
+                />
+                <Text style={styles.manualConversionHint}>
+                  Tương đương ~{manualDistanceKmInput} km (theo sải chân{' '}
+                  {(calibratedStrideM || 0.726).toFixed(3)} m)
+                </Text>
+              </>
+            )}
 
             <Text style={styles.inputLabel}>Thời gian (phút)</Text>
             <TextInput
@@ -749,7 +882,7 @@ export default function RunScreen() {
               style={styles.textInput}
               value={manualNoteInput}
               onChangeText={setManualNoteInput}
-              placeholder="Chạy máy chạy bộ"
+              placeholder="Chạy máy chạy bộ / ngoài trời"
               placeholderTextColor={colors.textMuted}
             />
 
@@ -1291,5 +1424,92 @@ const createStyles = (colors) =>
       fontSize: fontSize.caption,
       fontWeight: fontWeight.semibold,
       color: colors.danger,
+    },
+    mapSectionWrap: {
+      gap: spacing.xs,
+    },
+    mapSectionHeader: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      paddingHorizontal: 2,
+      marginBottom: 2,
+    },
+    mapHeaderLeft: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: 6,
+    },
+    mapSectionTitle: {
+      fontSize: fontSize.caption,
+      fontWeight: fontWeight.bold,
+      color: colors.text,
+    },
+    toggleMapMiniBtn: {
+      width: 32,
+      height: 32,
+      borderRadius: radius.pill,
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      alignItems: 'center',
+      justifyContent: 'center',
+    },
+    collapsedMapBar: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      justifyContent: 'space-between',
+      backgroundColor: colors.surface,
+      borderWidth: 1,
+      borderColor: colors.border,
+      borderRadius: radius.md,
+      paddingHorizontal: spacing.md,
+      paddingVertical: spacing.sm,
+    },
+    showMapBtn: {
+      flexDirection: 'row',
+      alignItems: 'center',
+      gap: spacing.xs,
+      flex: 1,
+    },
+    showMapBtnText: {
+      fontSize: fontSize.caption,
+      fontWeight: fontWeight.semibold,
+      color: colors.primary,
+    },
+    modeSwitchRow: {
+      flexDirection: 'row',
+      borderRadius: radius.md,
+      backgroundColor: colors.surfaceAlt,
+      padding: 3,
+      marginBottom: spacing.md,
+    },
+    modeSwitchBtn: {
+      flex: 1,
+      paddingVertical: 8,
+      alignItems: 'center',
+      justifyContent: 'center',
+      borderRadius: radius.sm,
+    },
+    modeSwitchBtnActive: {
+      backgroundColor: colors.surface,
+    },
+    modeSwitchText: {
+      fontSize: fontSize.caption,
+      fontWeight: fontWeight.medium,
+      color: colors.textMuted,
+    },
+    modeSwitchTextActive: {
+      fontWeight: fontWeight.bold,
+      color: colors.primary,
+    },
+    manualConversionHint: {
+      fontSize: fontSize.caption,
+      color: colors.textSecondary,
+      backgroundColor: colors.surfaceAlt,
+      padding: spacing.sm,
+      borderRadius: radius.sm,
+      marginBottom: spacing.sm,
+      lineHeight: 18,
     },
   });
