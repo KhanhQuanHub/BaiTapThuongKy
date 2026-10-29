@@ -16,7 +16,7 @@
 
       "env": {
         "EAS_BUILD_PROFILE": "preview",
-        "EXPO_PUBLIC_API_URL": "http://192.168.137.5:3000"
+        "EXPO_PUBLIC_API_URL": "https://visual-commissioner-brokers-stress.trycloudflare.com"
       }
       
     },
@@ -26,7 +26,7 @@
       },
       "env": {
         "EAS_BUILD_PROFILE": "production",
-        "EXPO_PUBLIC_API_URL": "https://api.figlog.vn"
+        "EXPO_PUBLIC_API_URL": "https://visual-commissioner-brokers-stress.trycloudflare.com"
       }
     }
   },

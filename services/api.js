@@ -11,9 +11,9 @@
 // ============================================================================
 
 import * as SecureStore from 'expo-secure-store';
-import { API_TIMEOUT_MS, BASE_URL } from './config';
+import { API_TIMEOUT_MS, BASE_URL, getBaseUrl, getBaseUrlAsync } from './config';
 
-export { BASE_URL };
+export { BASE_URL, getBaseUrl, getBaseUrlAsync };
 
 const TOKEN_STORAGE_KEY = 'figlog_auth_token';
 
@@ -175,7 +175,8 @@ export async function request(path, options = {}) {
       ...(options.headers || {}),
     };
 
-    const response = await fetch(`${BASE_URL}${path}`, {
+    const currentBaseUrl = await getBaseUrlAsync();
+    const response = await fetch(`${currentBaseUrl}${path}`, {
       ...options,
       headers,
       signal: controller.signal,

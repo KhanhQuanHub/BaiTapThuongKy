@@ -24,11 +24,11 @@ import {
   layout,
   radius,
   spacing,
-} from '../constants/theme';
-import { dedupeRuns, fetchRunHistoryPage, syncQueuedRuns } from '../services/runRepository';
-import { useTheme } from '../store/themeStore';
-import { formatPaceSec } from '../utils/runMath';
-import { formatDistance, formatDuration, formatInt } from '../utils/format';
+} from '../../constants/theme';
+import { dedupeRuns, fetchRunHistoryPage, syncQueuedRuns } from '../../services/runRepository';
+import { useTheme } from '../../store/themeStore';
+import { formatPaceSec } from '../../utils/runMath';
+import { formatDistance, formatDuration, formatInt } from '../../utils/format';
 
 const PAGE_LIMIT = 20;
 const MAX_STATE_ITEMS = 120;

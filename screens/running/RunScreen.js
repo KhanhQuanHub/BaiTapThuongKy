@@ -31,13 +31,13 @@ import {
   layout,
   radius,
   spacing,
-} from '../constants/theme';
-import { useRunTracker } from '../hooks/useRunTracker';
-import { login as apiLogin } from '../services/api';
-import { useAuthStore } from '../store/authStore';
-import { useTheme } from '../store/themeStore';
-import { formatDistance, formatDuration, formatInt } from '../utils/format';
-import RunMapView from '../components/run/RunMapView';
+} from '../../constants/theme';
+import { useRunTracker } from '../../hooks/useRunTracker';
+import { login as apiLogin } from '../../services/api';
+import { useAuthStore } from '../../store/authStore';
+import { useTheme } from '../../store/themeStore';
+import { formatDistance, formatDuration, formatInt } from '../../utils/format';
+import RunMapView from '../../components/run/RunMapView';
 import RunSummaryScreen from './RunSummaryScreen';
 
 // Lazy-load màn hình lịch sử để tối ưu bộ nhớ cho máy yếu
@@ -425,9 +425,9 @@ export default function RunScreen() {
               onPress={
                 authExpired
                   ? () => {
-                      setReloginFeedback('');
-                      setReloginVisible(true);
-                    }
+                    setReloginFeedback('');
+                    setReloginVisible(true);
+                  }
                   : triggerManualSync
               }
             >

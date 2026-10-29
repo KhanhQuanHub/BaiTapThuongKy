@@ -18,7 +18,9 @@
       "package": "com.quan.fitlog",
       "versionCode": 1,
       "config": {
-        "googleMaps": { "apiKey": "KHÓA_CỦA_BẠN" }
+        "googleMaps": {
+          "apiKey": "KHÓA_CỦA_BẠN"
+        }
       },
       "permissions": [
         "android.permission.ACTIVITY_RECOGNITION",
@@ -64,10 +66,10 @@
       ]
     ],
     "extra": {
-      "mapApiKey": "",
       "eas": {
-        "projectId": "b531b8c5-8d5d-4dbb-b91c-af6bc5bf19a8"
+        "projectId": "5d9f8a16-0b19-4774-a821-7372230e7cf3"
       }
-    }
+    },
+    "owner": "kquan11"
   }
 }

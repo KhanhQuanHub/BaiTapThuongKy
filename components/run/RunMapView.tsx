@@ -34,6 +34,7 @@ import {
 } from '../../constants/theme';
 import { useTheme } from '../../store/themeStore';
 import { getMapTileConfig } from '../../services/mapTileProvider';
+import { useLocationStore } from '../../store/locationStore';
 
 export type Coordinate = {
   latitude: number;
@@ -66,10 +67,18 @@ export default function RunMapView({
 
   const tileConfig = useMemo(() => getMapTileConfig(), []);
 
-  const initialCenter =
+  // Vị trí máy đã được theo dõi toàn app từ sau đăng nhập (store/locationStore.ts)
+  const deviceCoords = useLocationStore((state) => state.coords);
+
+  // Chốt tâm bản đồ ban đầu 1 lần (ưu tiên: lộ trình dở dang > vị trí máy > mặc định)
+  // để HTML WebView không bị nạp lại mỗi khi GPS cập nhật
+  const [initialCenter] = useState<Coordinate>(() =>
     initialCoordinates.length > 0
       ? initialCoordinates[initialCoordinates.length - 1]
-      : DEFAULT_CENTER;
+      : deviceCoords
+        ? { latitude: deviceCoords.latitude, longitude: deviceCoords.longitude }
+        : DEFAULT_CENTER
+  );
 
   const routeRef = useRef<Coordinate[]>(initialCoordinates);
   const currentPosRef = useRef<Coordinate>(initialCenter);
@@ -223,6 +232,24 @@ export default function RunMapView({
 
     return () => clearInterval(interval);
   }, [isTracking, hasGps, updateMapCoordinate]);
+
+  // Đồng bộ vị trí máy (từ store toàn app) lên bản đồ ngay khi bản đồ sẵn sàng
+  useEffect(() => {
+    if (!deviceCoords || !isMapReady || !webViewRef.current) return;
+    setHasGps(true);
+    currentPosRef.current = {
+      latitude: deviceCoords.latitude,
+      longitude: deviceCoords.longitude,
+      timestamp: deviceCoords.timestamp,
+    };
+    setCurrentPos(currentPosRef.current);
+    webViewRef.current.injectJavaScript(`
+      if (window.setCurrentLocation) {
+        window.setCurrentLocation(${deviceCoords.latitude}, ${deviceCoords.longitude});
+      }
+      true;
+    `);
+  }, [deviceCoords, isMapReady]);
 
   const handleRecenter = () => {
     if (!webViewRef.current) return;
@@ -411,6 +438,14 @@ export default function RunMapView({
 
             if (autoFollow) {
               map.panTo(pt, { animate: true, duration: 0.8 });
+            }
+          };
+
+          // Cập nhật chấm vị trí hiện tại (không thêm điểm vào lộ trình)
+          window.setCurrentLocation = function(lat, lng) {
+            currentMarker.setLatLng([lat, lng]);
+            if (autoFollow && routePoints.length === 0) {
+              map.setView([lat, lng], map.getZoom(), { animate: true });
             }
           };
 

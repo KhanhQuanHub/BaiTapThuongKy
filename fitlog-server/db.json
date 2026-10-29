@@ -39,6 +39,14 @@
       "role": "user",
       "createdAt": "2026-10-28T14:19:41.685Z",
       "id": 5
+    },
+    {
+      "email": "quan@gmail.com",
+      "password": "@KQuan231",
+      "fullName": "Quân",
+      "role": "user",
+      "createdAt": "2026-10-29T00:15:54.837Z",
+      "id": 6
     }
   ],
   "profiles": [

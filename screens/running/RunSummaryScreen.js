@@ -19,10 +19,10 @@ import {
   layout,
   radius,
   spacing,
-} from '../constants/theme';
-import { useTheme } from '../store/themeStore';
-import { formatPaceSec } from '../utils/runMath';
-import { formatDistance, formatDuration, formatInt } from '../utils/format';
+} from '../../constants/theme';
+import { useTheme } from '../../store/themeStore';
+import { formatPaceSec } from '../../utils/runMath';
+import { formatDistance, formatDuration, formatInt } from '../../utils/format';
 
 // Dòng split từng km bọc React.memo
 const SplitRowItem = memo(function SplitRowItem({ km, sec, textColor, mutedColor, borderColor }) {

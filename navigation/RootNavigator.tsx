@@ -15,6 +15,7 @@ import RegisterScreen from '../screens/auth/RegisterScreen';
 import MainTabs from './MainTabs';
 import { useAuthStore } from '../store/authStore';
 import { useTheme } from '../store/themeStore';
+import { useLocationStore } from '../store/locationStore';
 
 export type RootStackParamList = {
   Login: undefined;
@@ -33,6 +34,16 @@ export default function RootNavigator() {
   useEffect(() => {
     restoreSession();
   }, [restoreSession]);
+
+  // Sau khi đăng nhập (hoặc khôi phục phiên) thành công: bật theo dõi vị trí toàn app,
+  // khi đăng xuất thì tắt để tiết kiệm pin
+  useEffect(() => {
+    if (isLoggedIn) {
+      useLocationStore.getState().startWatching();
+    } else {
+      useLocationStore.getState().stopWatching();
+    }
+  }, [isLoggedIn]);
 
   if (isRestoring) {
     return (
